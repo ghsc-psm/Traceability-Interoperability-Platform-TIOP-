@@ -43,20 +43,12 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	private String dbuser = "schatterjee";
 	private String dbpass = "Test!234";
 	private Connection con;
-//	private String source;
-//	private String destination;
-//	private String gtinInfo;
 	private Context context;
-//	private String fileName;
-//	private String bucketName;
-//	private int objEventCount = 0;
-//	private int aggEventCount = 0;
 	
 	@Override
 	public String handleRequest(Object event, Context context) {
 		this.context = context;
 	    context.getLogger().log("TIOPDocumentValidation::handleRequest ::: Start");
-		//String bucketName= null;
 	    
 	    String source = null;
 	    String destination = null;
@@ -65,27 +57,31 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		String bucketName = null;
 		int objEventCount = 0;
 		int aggEventCount = 0;
+		//NodeList listEPCISBody1 = null;
 		
 		 if(event instanceof LinkedHashMap) {
-		    	LinkedHashMap<String, String> mapEvent = (LinkedHashMap<String, String>) event;
-		    	bucketName = mapEvent.get("bucketName");
-		    	fileName = mapEvent.get("keyName");
-		    	source = mapEvent.get("source");
-		    	destination = mapEvent.get("destination");
-		    	gtinInfo = mapEvent.get("gtinInfo");
+		    	LinkedHashMap<String, Object> mapEvent = (LinkedHashMap<String, Object>) event;
+		    	bucketName = (String) mapEvent.get("bucketName");
+		    	fileName = (String) mapEvent.get("keyName");
+		    	source = (String) mapEvent.get("source");
+		    	destination = (String) mapEvent.get("destination");
+		    	gtinInfo = (String) mapEvent.get("gtinInfo");
 		    	
-		    	String objCount = mapEvent.get("objEventCount");
+		    	String objCount = (String) mapEvent.get("objEventCount");
 		    	if(objCount != null) objEventCount = Integer.parseInt(objCount);
-		    	String aggCount = mapEvent.get("aggEventCount");
+		    	String aggCount = (String) mapEvent.get("aggEventCount");
 		    	if(aggCount != null) aggEventCount = Integer.parseInt(aggCount);
 		    	
-		    	context.getLogger().log("BucketName :: " + bucketName);
-				context.getLogger().log("fileName :: " + fileName);
-				context.getLogger().log("Total ObjectEvent count = "+objEventCount);
-				context.getLogger().log("Total AggregationEvent count = "+aggEventCount);
-				context.getLogger().log("source = "+source);
-				context.getLogger().log("destination = "+destination);
-				context.getLogger().log("gtinInfo = "+gtinInfo);
+		    	//listEPCISBody1 = (NodeList) mapEvent.get("listEPCISBody");
+		    	
+		    	context.getLogger().log("ValidateLambdaHandler::BucketName :: " + bucketName);
+				context.getLogger().log("ValidateLambdaHandler::fileName :: " + fileName);
+				context.getLogger().log("ValidateLambdaHandler::Total ObjectEvent count = "+objEventCount);
+				context.getLogger().log("ValidateLambdaHandler::Total AggregationEvent count = "+aggEventCount);
+				context.getLogger().log("ValidateLambdaHandler::source = "+source);
+				context.getLogger().log("ValidateLambdaHandler::destination = "+destination);
+				context.getLogger().log("ValidateLambdaHandler::gtinInfo = "+gtinInfo);
+				//context.getLogger().log("ValidateLambdaHandler::listEPCISBody = "+listEPCISBody1);
 		   }
 		
 		S3Object s3object = null;
@@ -113,21 +109,23 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		    }
 			
 			//String text = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-			context.getLogger().log("-----------------------------------textBuilder");
-			context.getLogger().log("-----------------------------------string");
-			
+			context.getLogger().log("-----------------------------------1");
 
 			DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder builder = factory.newDocumentBuilder();
 			document = builder.parse(inputStream);
+			context.getLogger().log("-----------------------------------1.1");
 			document.getDocumentElement().normalize();
+			context.getLogger().log("-----------------------------------1.2");
 //			context.getLogger().log("----------------------------------- closing streems 1");
 //			if (inputStream != null) inputStream.close();
 //			if (s3object != null) s3object.close();
 			this.con = getConnection();
 
 			// get <EPCISBody>
+			context.getLogger().log("-----------------------------------2");
 			NodeList listEPCISBody = document.getElementsByTagName("EPCISBody");
+			context.getLogger().log("-----------------------------------3");
 			for (int temp = 0; temp < listEPCISBody.getLength(); temp++) {
 				Node nodeEPCISBody = listEPCISBody.item(temp);
 				// context.getLogger().log("Current Element1 : " + nodeEPCISBody.getNodeName());
@@ -140,26 +138,10 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 				}
 
 			}	
+			
 			//Transfrom lamda call
-			invokeTransfromLamda(context, fileName, textBuilder.toString());
-/*			
-			context.getLogger().log("-----------------------------------inputStream 2 = "+inputStream.toString());
-			StringBuilder textBuilder = new StringBuilder();
-		    try (Reader reader = new BufferedReader(new InputStreamReader
-		      (inputStream, StandardCharsets.UTF_8))) {
-		        int c = 0;
-		        while ((c = reader.read()) != -1) {
-		            textBuilder.append((char) c);
-		        }
-		    }
-			
-			//String text = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-			context.getLogger().log("-----------------------------------textBuilder = "+textBuilder);
-			context.getLogger().log("-----------------------------------string = "+textBuilder.toString());
-			
-*/			
-//			if (inputStream != null) inputStream.close();
-//			if (s3object != null) s3object.close();
+			invokeTransfromLamda(context, fileName, textBuilder.toString(), source, destination, gtinInfo, objEventCount, aggEventCount);
+
 			context.getLogger().log("Validated successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'");
 			
 		} catch (TIOPException e) {
@@ -184,12 +166,17 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		return "Validated successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'";
 	}
 	
-	private void invokeTransfromLamda(Context context, String fileName, String fileContent) {
+	private void invokeTransfromLamda(Context context, String fileName, String fileContent, String source, String destination, String gtinInfo, int objEventCount, int aggEventCount) {
 		//context.getLogger().log("Calling validate lamda");
 		
 		JSONObject payloadObject = new JSONObject();
 		payloadObject.put("fileContent", fileContent);
 		payloadObject.put("fileName", fileName);
+		payloadObject.put("source", source);
+		payloadObject.put("destination", destination);
+		payloadObject.put("gtinInfo", gtinInfo);
+		payloadObject.put("objEventCount", String.valueOf(objEventCount));
+		payloadObject.put("aggEventCount", String.valueOf(aggEventCount));
 		
 		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
 
@@ -295,47 +282,9 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	
 	private void insertErrorLog(int eventTypeId, String msg, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) {
 		Date date = new Date();
-		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");  //2024-04-05 20:31:02
+		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 		String strDate= formatter.format(date);
-//		String query1 = "INSERT INTO tiop_operation (event_type_id, event_id, source_partner_id, destination_partner_id, source_location_id, destination_location_id, item_id, rule_id, status_id, create_date, creator_id, last_modified_date, last_modified_by, current_indicator, ods_text, exception_detail) \r\n"
-//		 		+ "values ("+eventType+", -- 1 (Object Event), 2 (Aggregation Event)\r\n"
-//		 		+ "null, -- <eventID>urn:uuid:b15534cf-0edd-42c4-a2b6-776bad00e811</eventID>\r\n"
-//		 		+ "(select distinct stp.partner_id \r\n"
-//		 		+ "from location sl \r\n"
-//		 		+ "inner join trading_partner stp \r\n"
-//		 		+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+sourceGlnUri+"'),\r\n"
-//		 		+ "(select distinct  dtp.partner_id\r\n"
-//		 		+ "from location dl \r\n"
-//		 		+ "inner join trading_partner dtp \r\n"
-//		 		+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"+destination+"'),\r\n"
-//		 		+ "(select distinct sl.location_id\r\n"
-//		 		+ "from location sl \r\n"
-//		 		+ "inner join trading_partner stp \r\n"
-//		 		+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+sourceGlnUri+"'),\r\n"
-//		 		+ "(select distinct  dl.location_id \r\n"
-//		 		+ "from location dl \r\n"
-//		 		+ "inner join trading_partner dtp \r\n"
-//		 		+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"+destination+"'),\r\n"
-//		 		+ "(select distinct ti.item_id \r\n"
-//		 		+ "from trade_item ti where ti.current_indicator='A' and gtin_uri ='"+gtinUri+"'),\r\n"
-//		 		+ "(select tr.rule_id from \r\n"
-//		 		+ "tiop_rule tr \r\n"
-//		 		+ "inner join tiop_status ts \r\n"
-//		 		+ "ON tr.status_id = ts.status_id \r\n"
-//		 		+ "where \r\n"
-//		 		+ "tr.source_gln_uri = '"+sourceGlnUri+"' \r\n"
-//		 		+ "and tr.destination_gln ='"+destination+"'\r\n"
-//		 		+ "and tr.gtin_uri ='"+gtinUri+"'\r\n"
-//		 		+ "and ts.status_description ='Active'),"
-//		 		+ errorType+ ", -- validation --\r\n"
-//		 		+ "'"+strDate+"',\r\n"
-//		 		+ "'tiop_validation', -- id that insert data in tiopdb\r\n"
-//		 		+ "'"+strDate+"',\r\n"
-//		 		+ "'"+modifiedBy+"', -- id that insert data in tiopdb\r\n"
-//		 		+ "'A',\r\n"
-//		 		+ "'',\r\n"
-//		 		+ "'"+ msg+"')";
-		
+
 		String query = "INSERT INTO tiopdb.tiop_operation ( event_type_id, source_partner_id, destination_partner_id, source_location_id, destination_location_id, item_id, rule_id, status_id, document_name, object_event_count, aggregation_event_count, exception_detail, create_date, creator_id, last_modified_date, last_modified_by, current_indicator, ods_text) \r\n"
 				+ "VALUES (\r\n"
 				+ eventTypeId+", -- 1 (Object Event), 2 (Aggregation Event)\r\n"
@@ -403,6 +352,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 
 	private  void parseEventList(Element elementEPCISBody, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) throws TIOPException {
 		NodeList listEventList = elementEPCISBody.getElementsByTagName("EventList");
+		context.getLogger().log("-----------------------------------parseEventList start");
 		for (int temp = 0; temp < listEventList.getLength(); temp++) {
 			Node nodeEventList = listEventList.item(temp);
 			//context.getLogger().log("Current Element2 : " + nodeEventList.getNodeName());
@@ -442,6 +392,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 			}
 
 		}
+		context.getLogger().log("-----------------------------------parseEventList end");
 	}
 
 	private  void parseAggregationEventt(Element elementEventList, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) throws TIOPException {
@@ -452,24 +403,6 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 			if (nodeAggregationEvent.getNodeType() == Node.ELEMENT_NODE
 					&& nodeAggregationEvent.getNodeName().equals("AggregationEvent")) {
 				Element elementAggregationEvent = (Element) nodeAggregationEvent;
-				
-//				if(source == null) {
-//					source = extractGN(getSource(elementAggregationEvent));
-//					context.getLogger().log("Current source in AE== " + source);
-//			    } 
-//				
-//				
-//				if(destination == null) {
-//					destination = getSimpleNode(elementAggregationEvent, "tiopvoc:nts_gln");
-//					context.getLogger().log("Current destination in AE== " + destination);
-//			    } 
-				
-				
-//				Set<String> childEPCsSet = parseEPCList(elementAggregationEvent, "childEPCs");
-				//context.getLogger().log("----- parseAggregationEventt::childEPCsSet = " + childEPCsSet);
-//				for(String st: childEPCsSet) {
-//					gtin = st;
-//				}
 				
 				String eventTime = getSimpleNode(elementAggregationEvent, "eventTime");
 				if(eventTime == null || eventTime.isBlank()) throw new TIOPException("EXC002#Event Time is blank or missing");
@@ -502,24 +435,6 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 					&& nodeObjectEvent.getNodeName().equals("ObjectEvent")) {
 				Element elementObjectEvent = (Element) nodeObjectEvent;
 				
-//				if(source == null) {
-//					source = extractGN(getSource(elementObjectEvent));
-//					context.getLogger().log("Current source in OE== " + source);
-//			    } 
-//				
-//				
-//				if(destination == null) {
-//					destination = getSimpleNode(elementObjectEvent, "tiopvoc:nts_gln");
-//					context.getLogger().log("Current destination in OE== " + destination);
-//			    } 
-				
-				
-//				Set<String> epcSet = parseEPCList(elementObjectEvent, "epcList");
-				//context.getLogger().log("----- parseObjectEvent::gtinList = " + epcSet);
-//				for(String st: epcSet) {
-//					gtin = st;
-//				}
-				
 				String eventTime = getSimpleNode(elementObjectEvent, "eventTime");
 				if(eventTime == null || eventTime.isBlank()) throw new TIOPException("EXC002#Event Time is blank or missing");
 				
@@ -536,33 +451,9 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		context.getLogger().log("Total ObjectEvent count = "+listObjectEvent.getLength());
 	}
 	
-//	private  Set<String> parseEPCList(Element elementObjectEvent, String nodeName) {
-//		Set<String> gtinSet = new HashSet<String>();
-//		NodeList listEPCList = elementObjectEvent.getElementsByTagName(nodeName);
-//		for (int temp = 0; temp < listEPCList.getLength(); temp++) {
-//			Node nodeEPCList = listEPCList.item(temp);
-//			// context.getLogger().log("Current Element : " + nodeEPCList.getNodeName());
-//			if (nodeEPCList.getNodeType() == Node.ELEMENT_NODE && nodeEPCList.getNodeName().equals(nodeName)) {
-//				Element elementEPCList = (Element) nodeEPCList;
-//
-//				NodeList listEPC = elementObjectEvent.getElementsByTagName("epc");
-//				// context.getLogger().log("epc length : " + listEPC.getLength());
-//				for (int j = 0; j < listEPC.getLength(); j++) {
-//					String epc = elementEPCList.getElementsByTagName("epc").item(j).getTextContent();
-//					//context.getLogger().log("epc uri [" + j + "] = " + epc);
-//					if (epc.contains("urn:epc:id:sgtin")) {
-//						// context.getLogger().log("sgtin :::> " + epc.substring(0, epc.lastIndexOf('.')));
-//						gtinSet.add(epc.substring(0, epc.lastIndexOf('.')));
-//					}
-//				}
-//			}
-//		}
-//		return gtinSet;
-//	}
-	
 	private void validateLocation(Element elementObjectEvent) throws TIOPException {
 		String bizStep = getSimpleNode(elementObjectEvent, "bizStep");
-		if(bizStep.contains("packing")) {
+		if(bizStep.contains("shipping")) {
 			Set<String> locationSet = geLocationFromExtension(elementObjectEvent);
 			context.getLogger().log("locationSet ==== "+locationSet);
 			if(locationSet == null || locationSet.isEmpty()) throw new TIOPException("EXC006#Recipient GLN (physical ship-to location) is blank or missing");
@@ -619,32 +510,5 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		//context.getLogger().log("Current "+ nodeName+" == " + node);
 		return node;
 	}
-
-//	private  String getSource(Element elementObjectEvent) {
-//		String source = null;
-//		NodeList nodelistBizLocation = elementObjectEvent.getElementsByTagName("bizLocation");
-//		for (int temp = 0; temp < nodelistBizLocation.getLength(); temp++) {
-//			Node nodeBizLocation = nodelistBizLocation.item(temp);
-//			// context.getLogger().log("Current Element : " + nodeEPCList.getNodeName());
-//			if (nodeBizLocation.getNodeType() == Node.ELEMENT_NODE && nodeBizLocation.getNodeName().equals("bizLocation")) {
-//				Element elementBizLocation = (Element) nodeBizLocation;
-//				source = elementBizLocation.getElementsByTagName("id").item(0).getTextContent();
-//			}
-//		}
-//		return source;
-//	}
-//	
-//
-//
-//
-//	private  String extractGN(String gn) {
-//		if(gn != null) {
-//			String last = gn.substring(gn.lastIndexOf('.'), gn.length());
-//			if (!last.contains(".0")) {
-//				gn = gn.substring(0, gn.lastIndexOf('.'));
-//			}
-//		}
-//		return gn;
-//	}
 
 }
