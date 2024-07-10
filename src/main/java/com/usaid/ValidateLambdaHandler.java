@@ -1,9 +1,5 @@
 package com.usaid;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -13,7 +9,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -39,16 +34,13 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream; 
 
 public class ValidateLambdaHandler implements RequestHandler<Object, String> {
-	private String dburl = "jdbc:mysql://tiopdevtestdb.cx8a24s68i3t.us-east-1.rds.amazonaws.com:3306/tiopdb";
-	private String dbuser = "schatterjee";
-	private String dbpass = "Test!234";
 	private Connection con;
 	private Context context;
 	
 	@Override
 	public String handleRequest(Object event, Context context) {
 		this.context = context;
-	    context.getLogger().log("TIOPDocumentValidation::handleRequest ::: Start");
+	    context.getLogger().log("TIOPDocumentValidation::handleRequest ::: Start------");
 	    
 	    String source = null;
 	    String destination = null;
@@ -57,7 +49,11 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		String bucketName = null;
 		int objEventCount = 0;
 		int aggEventCount = 0;
-		//NodeList listEPCISBody1 = null;
+		S3Object s3object = null;
+		S3ObjectInputStream inputStream = null;
+//		S3Object s3object1 = null;
+//		S3ObjectInputStream inputStream1 = null;
+		Document document;
 		
 		 if(event instanceof LinkedHashMap) {
 		    	LinkedHashMap<String, Object> mapEvent = (LinkedHashMap<String, Object>) event;
@@ -84,53 +80,49 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 				//context.getLogger().log("ValidateLambdaHandler::listEPCISBody = "+listEPCISBody1);
 		   }
 		
-		S3Object s3object = null;
-		S3ObjectInputStream inputStream = null;
-		Document document;
+		
 		try {
 			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
 			s3object = s3client.getObject(bucketName, fileName);
 			inputStream = s3object.getObjectContent();
-			context.getLogger().log("-----------------------------------inputStream 1 ");
+			context.getLogger().log("-----------------------------------ValidateLambdaHandler 1");
 			
-			AmazonS3 s3client1 = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
-					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
-			S3Object s3object1 = s3client1.getObject(bucketName, fileName);
-			S3ObjectInputStream inputStream1 = s3object1.getObjectContent();
-			context.getLogger().log("-----------------------------------inputStream 2");
-			StringBuilder textBuilder = new StringBuilder();
-		    try (Reader reader = new BufferedReader(new InputStreamReader
-		      (inputStream1, StandardCharsets.UTF_8))) {
-		        int c = 0;
-		        while ((c = reader.read()) != -1) {
-		            textBuilder.append((char) c);
-		        }
-		    }
-			
-			//String text = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-			context.getLogger().log("-----------------------------------1");
+//			AmazonS3 s3client1 = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
+//					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
+//			s3object1 = s3client1.getObject(bucketName, fileName);
+//			inputStream1 = s3object1.getObjectContent();
+//			context.getLogger().log("-----------------------------------ValidateLambdaHandler 2");
+//			StringBuilder textBuilder = new StringBuilder();
+//		    try (Reader reader = new BufferedReader(new InputStreamReader
+//		      (inputStream1, StandardCharsets.UTF_8))) {
+//		        int c = 0;
+//		        while ((c = reader.read()) != -1) {
+//		            textBuilder.append((char) c);
+//		        }
+//		    }
+//			
+//			//String text = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+//			context.getLogger().log("-----------------------------------ValidateLambdaHandler 3");
 
 			DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder builder = factory.newDocumentBuilder();
 			document = builder.parse(inputStream);
-			context.getLogger().log("-----------------------------------1.1");
+			context.getLogger().log("-----------------------------------ValidateLambdaHandler 4");
 			document.getDocumentElement().normalize();
-			context.getLogger().log("-----------------------------------1.2");
-//			context.getLogger().log("----------------------------------- closing streems 1");
-//			if (inputStream != null) inputStream.close();
-//			if (s3object != null) s3object.close();
+			context.getLogger().log("-----------------------------------ValidateLambdaHandler 5");
+
 			this.con = getConnection();
 
 			// get <EPCISBody>
-			context.getLogger().log("-----------------------------------2");
+			context.getLogger().log("-----------------------------------ValidateLambdaHandler 6");
 			NodeList listEPCISBody = document.getElementsByTagName("EPCISBody");
-			context.getLogger().log("-----------------------------------3");
+			context.getLogger().log("-----------------------------------ValidateLambdaHandler 7");
 			for (int temp = 0; temp < listEPCISBody.getLength(); temp++) {
 				Node nodeEPCISBody = listEPCISBody.item(temp);
 				// context.getLogger().log("Current Element1 : " + nodeEPCISBody.getNodeName());
 				if (nodeEPCISBody.getNodeType() == Node.ELEMENT_NODE
-						&& nodeEPCISBody.getNodeName().equals("EPCISBody")) {
+						&& nodeEPCISBody.getNodeName().equals(TIOPConstants.EPCISBody)) {
 					Element elementEPCISBody = (Element) nodeEPCISBody;
 
 					// get <EventList>
@@ -138,9 +130,10 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 				}
 
 			}	
-			
+			//Router lamda -- arn:aws:lambda:us-east-1:654654535046:function:TIOPRouter
+			invokeRouterfromLamda(context, fileName, bucketName, source, destination, gtinInfo, objEventCount, aggEventCount);
 			//Transfrom lamda call
-			invokeTransfromLamda(context, fileName, textBuilder.toString(), source, destination, gtinInfo, objEventCount, aggEventCount);
+			invokeTransfromLamda(context, fileName, bucketName, source, destination, gtinInfo, objEventCount, aggEventCount);
 
 			context.getLogger().log("Validated successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'");
 			
@@ -155,22 +148,49 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 				source = null;
 				destination = null;
 				//if (con != null && !con.isClosed()) con.close();
-				//if (inputStream != null) inputStream.close();
-				//if (s3object != null) s3object.close();
+				if (inputStream != null) inputStream.close();
+				//if (inputStream1 != null) inputStream1.close();
+				if (s3object != null) s3object.close();
+				//if (s3object1 != null) s3object1.close();
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-			context.getLogger().log("----------------------------------- finally end");
+			context.getLogger().log("ValidateLambdaHandler finally end");
 		}
 
 		return "Validated successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'";
 	}
 	
-	private void invokeTransfromLamda(Context context, String fileName, String fileContent, String source, String destination, String gtinInfo, int objEventCount, int aggEventCount) {
+	private void invokeRouterfromLamda(Context context, String fileName, String bucketName, String source,
+			String destination, String gtinInfo, int objEventCount, int aggEventCount) {
+		context.getLogger().log("Calling TIOPRouter lamda");
+
+		JSONObject payloadObject = new JSONObject();
+		payloadObject.put("bucketName", bucketName);
+		payloadObject.put("fileName", fileName);
+		payloadObject.put("source", source);
+		payloadObject.put("destination", destination);
+		payloadObject.put("gtinInfo", gtinInfo);
+		payloadObject.put("objEventCount", String.valueOf(objEventCount));
+		payloadObject.put("aggEventCount", String.valueOf(aggEventCount));
+
+		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
+		String TIOPRouter = System.getenv("TIOPRouter");
+		InvokeRequest request = new InvokeRequest();
+		request.withFunctionName(TIOPRouter)
+				.withPayload(payloadObject.toString());
+		context.getLogger().log("Calling TIOPRouter with payload = " +payloadObject.toString());
+		InvokeResult invoke = client.invoke(request);
+		context.getLogger().log("Result invoking TIOPRouter  == " + invoke);
+	}
+	
+	
+
+	private void invokeTransfromLamda(Context context, String fileName, String bucketName, String source, String destination, String gtinInfo, int objEventCount, int aggEventCount) {
 		//context.getLogger().log("Calling validate lamda");
 		
 		JSONObject payloadObject = new JSONObject();
-		payloadObject.put("fileContent", fileContent);
+		payloadObject.put("bucketName", bucketName);
 		payloadObject.put("fileName", fileName);
 		payloadObject.put("source", source);
 		payloadObject.put("destination", destination);
@@ -179,18 +199,18 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		payloadObject.put("aggEventCount", String.valueOf(aggEventCount));
 		
 		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
-
+		String TIOPDocumentTransform = System.getenv("TIOPDocumentTransform");
 		InvokeRequest request = new InvokeRequest();
-		request.withFunctionName("arn:aws:lambda:us-east-1:654654535046:function:TIOPDocumentTransform").withPayload(payloadObject.toString());
+		request.withFunctionName(TIOPDocumentTransform).withPayload(payloadObject.toString());
 		//context.getLogger().log("Calling TransfromLambdaHandler with payload = "+payloadObject.toString());
 		InvokeResult invoke = client.invoke(request);
 		context.getLogger().log("Result invoking TIOPDocumentValidation  == " + invoke);
 	}
-
+	
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			Class.forName("com.mysql.jdbc.Driver");
-			con = DriverManager.getConnection(dburl, dbuser, dbpass);
+			Class.forName(TIOPConstants.dbdriver);
+			con = DriverManager.getConnection(TIOPConstants.dburl, TIOPConstants.dbuser, TIOPConstants.dbpass);
 		}
 		return con;
 	}
@@ -351,13 +371,13 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 
 
 	private  void parseEventList(Element elementEPCISBody, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) throws TIOPException {
-		NodeList listEventList = elementEPCISBody.getElementsByTagName("EventList");
+		NodeList listEventList = elementEPCISBody.getElementsByTagName(TIOPConstants.EventList);
 		context.getLogger().log("-----------------------------------parseEventList start");
 		for (int temp = 0; temp < listEventList.getLength(); temp++) {
 			Node nodeEventList = listEventList.item(temp);
 			//context.getLogger().log("Current Element2 : " + nodeEventList.getNodeName());
 
-			if (nodeEventList.getNodeType() == Node.ELEMENT_NODE && nodeEventList.getNodeName().equals("EventList")) {
+			if (nodeEventList.getNodeType() == Node.ELEMENT_NODE && nodeEventList.getNodeName().equals(TIOPConstants.EventList)) {
 				Element elementEventList = (Element) nodeEventList;
 
 				// get <ObjectEvent>
@@ -396,25 +416,25 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	}
 
 	private  void parseAggregationEventt(Element elementEventList, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) throws TIOPException {
-		NodeList listAggregationEvent = elementEventList.getElementsByTagName("AggregationEvent");
+		NodeList listAggregationEvent = elementEventList.getElementsByTagName(TIOPConstants.AggregationEvent);
 		for (int temp = 0; temp < listAggregationEvent.getLength(); temp++) {
 			Node nodeAggregationEvent = listAggregationEvent.item(temp);
 			//context.getLogger().log("Current Element3 : " + nodeAggregationEvent.getNodeName());
 			if (nodeAggregationEvent.getNodeType() == Node.ELEMENT_NODE
-					&& nodeAggregationEvent.getNodeName().equals("AggregationEvent")) {
+					&& nodeAggregationEvent.getNodeName().equals(TIOPConstants.AggregationEvent)) {
 				Element elementAggregationEvent = (Element) nodeAggregationEvent;
 				
-				String eventTime = getSimpleNode(elementAggregationEvent, "eventTime");
+				String eventTime = getSimpleNode(elementAggregationEvent, TIOPConstants.eventTime);
 				if(eventTime == null || eventTime.isBlank()) throw new TIOPException("EXC002#Event Time is blank or missing");
 				
-				String eventTimeZoneOffset = getSimpleNode(elementAggregationEvent, "eventTimeZoneOffset");
+				String eventTimeZoneOffset = getSimpleNode(elementAggregationEvent, TIOPConstants.eventTimeZoneOffset);
 				if(eventTimeZoneOffset == null || eventTimeZoneOffset.isBlank()) throw new TIOPException("EXC003#Event Time ZoneOffset is blank or missing");
 				
-				String bizStep = getSimpleNode(elementAggregationEvent, "bizStep");
+				String bizStep = getSimpleNode(elementAggregationEvent, TIOPConstants.bizStep);
 				if(bizStep == null || bizStep.isBlank()) throw new TIOPException("EXC004#Event BizStep is blank or missing");
 				
 				Set<String> parentIDSet = new HashSet<String>();
-				String parentID = getSimpleNode(elementAggregationEvent, "parentID");
+				String parentID = getSimpleNode(elementAggregationEvent, TIOPConstants.parentID);
 				if(parentID == null || parentID.isBlank()) throw new TIOPException("EXC005#Event ParentID is blank or missing");
 				
 				validateLocation(elementAggregationEvent);
@@ -427,21 +447,21 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	
 
 	private  void parseObjectEvent(Element elementEventList, String source, String destination, String gtinInfo, String fileName, int objEventCount, int aggEventCount) throws TIOPException {
-		NodeList listObjectEvent = elementEventList.getElementsByTagName("ObjectEvent");
+		NodeList listObjectEvent = elementEventList.getElementsByTagName(TIOPConstants.ObjectEvent);
 		for (int temp = 0; temp < listObjectEvent.getLength(); temp++) {
 			Node nodeObjectEvent = listObjectEvent.item(temp);
 			//context.getLogger().log("Current Element3 : " + nodeObjectEvent.getNodeName());
 			if (nodeObjectEvent.getNodeType() == Node.ELEMENT_NODE
-					&& nodeObjectEvent.getNodeName().equals("ObjectEvent")) {
+					&& nodeObjectEvent.getNodeName().equals(TIOPConstants.ObjectEvent)) {
 				Element elementObjectEvent = (Element) nodeObjectEvent;
 				
-				String eventTime = getSimpleNode(elementObjectEvent, "eventTime");
+				String eventTime = getSimpleNode(elementObjectEvent, TIOPConstants.eventTime);
 				if(eventTime == null || eventTime.isBlank()) throw new TIOPException("EXC002#Event Time is blank or missing");
 				
-				String eventTimeZoneOffset = getSimpleNode(elementObjectEvent, "eventTimeZoneOffset");
+				String eventTimeZoneOffset = getSimpleNode(elementObjectEvent, TIOPConstants.eventTimeZoneOffset);
 				if(eventTimeZoneOffset == null || eventTimeZoneOffset.isBlank()) throw new TIOPException("EXC003#Event Time ZoneOffset is blank or missing");
 				
-				String bizStep = getSimpleNode(elementObjectEvent, "bizStep");
+				String bizStep = getSimpleNode(elementObjectEvent, TIOPConstants.bizStep);
 				if(bizStep == null || bizStep.isBlank()) throw new TIOPException("EXC004#Event BizStep is blank or missing");
 				
 				validateLocation(elementObjectEvent);
@@ -452,8 +472,8 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	}
 	
 	private void validateLocation(Element elementObjectEvent) throws TIOPException {
-		String bizStep = getSimpleNode(elementObjectEvent, "bizStep");
-		if(bizStep.contains("shipping")) {
+		String bizStep = getSimpleNode(elementObjectEvent, TIOPConstants.bizStep);
+		if(bizStep.contains(TIOPConstants.shipping)) {
 			Set<String> locationSet = geLocationFromExtension(elementObjectEvent);
 			context.getLogger().log("locationSet ==== "+locationSet);
 			if(locationSet == null || locationSet.isEmpty()) throw new TIOPException("EXC006#Recipient GLN (physical ship-to location) is blank or missing");
@@ -463,11 +483,11 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	
 	private Set<String> geLocationFromExtension(Element elementObjectEvent) {
 		Set<String> locSet = new HashSet<String>();
-		NodeList listExtension = elementObjectEvent.getElementsByTagName("extension");
+		NodeList listExtension = elementObjectEvent.getElementsByTagName(TIOPConstants.extension);
 		for (int temp = 0; temp < listExtension.getLength(); temp++) {
 			Node nodeExtension = listExtension.item(temp);
 			// context.getLogger().log("Current Element : " + nodeEPCList.getNodeName());
-			if (nodeExtension.getNodeType() == Node.ELEMENT_NODE && nodeExtension.getNodeName().equals("extension")) {
+			if (nodeExtension.getNodeType() == Node.ELEMENT_NODE && nodeExtension.getNodeName().equals(TIOPConstants.extension)) {
 				Element elementExtension = (Element) nodeExtension;
 				String location = parseLocation(elementExtension);
 				if(location != null && !location.isBlank()) locSet.add(location);
@@ -478,16 +498,16 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 
 	private String parseLocation(Element elementExtension) {
 		String location = null;
-		NodeList listDestinationList = elementExtension.getElementsByTagName("destinationList");
+		NodeList listDestinationList = elementExtension.getElementsByTagName(TIOPConstants.destinationList);
 		for (int temp = 0; temp < listDestinationList.getLength(); temp++) {
 			Node nodeDestinationList = listDestinationList.item(temp);
 			// context.getLogger().log("Current Element : " + nodeDestinationList.getNodeName());
 			if (nodeDestinationList.getNodeType() == Node.ELEMENT_NODE
-					&& nodeDestinationList.getNodeName().equals("destinationList")) {
+					&& nodeDestinationList.getNodeName().equals(TIOPConstants.destinationList)) {
 				Element elementDestinationList = (Element) nodeDestinationList;
-				NodeList lisDestination = elementDestinationList.getElementsByTagName("destination");
+				NodeList lisDestination = elementDestinationList.getElementsByTagName(TIOPConstants.destination);
 				for (int j = 0; j < lisDestination.getLength(); j++) {
-					location = elementDestinationList.getElementsByTagName("destination").item(j).getTextContent();
+					location = elementDestinationList.getElementsByTagName(TIOPConstants.destination).item(j).getTextContent();
 				}
 			}
 		}

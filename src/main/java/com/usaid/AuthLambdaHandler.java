@@ -38,9 +38,6 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream; 
 
 public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
-	private String dburl = "jdbc:mysql://tiopdevtestdb.cx8a24s68i3t.us-east-1.rds.amazonaws.com:3306/tiopdb";
-	private String dbuser = "schatterjee";
-	private String dbpass = "Test!234";
 	private Connection con;
 	private Context context;
 	
@@ -60,28 +57,29 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 		try {
 			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
-			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 1");
+			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: Start");
+			String env = System.getenv("env");
+			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: env = "+env);
 			s3object = s3client.getObject(bucketName, fileName);
-			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 2");
 			inputStream = s3object.getObjectContent();
-			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 3");
-			//context.getLogger().log("file content read complete inputStream = " + inputStream);
+			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 1");
 			DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder builder = factory.newDocumentBuilder();
 			document = builder.parse(inputStream);
+			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 2");
 			document.getDocumentElement().normalize();
-//			context.getLogger().log("----------------------------------- closing streems 1");
+			context.getLogger().log("TIOPDocumentAuth::handleRequest ::: 3");
 //			if (inputStream != null) inputStream.close();
 //			if (s3object != null) s3object.close();
 			this.con = getConnection();
 			Map<String, String> validationInfo = new HashMap<String, String>();
 			// get <EPCISBody>
-			NodeList listEPCISBody = document.getElementsByTagName("EPCISBody");
+			NodeList listEPCISBody = document.getElementsByTagName(TIOPConstants.EPCISBody);
 			for (int temp = 0; temp < listEPCISBody.getLength(); temp++) {
 				Node nodeEPCISBody = listEPCISBody.item(temp);
 				// context.getLogger().log("Current Element1 : " + nodeEPCISBody.getNodeName());
 				if (nodeEPCISBody.getNodeType() == Node.ELEMENT_NODE
-						&& nodeEPCISBody.getNodeName().equals("EPCISBody")) {
+						&& nodeEPCISBody.getNodeName().equals(TIOPConstants.EPCISBody)) {
 					Element elementEPCISBody = (Element) nodeEPCISBody;
 
 					// get <EventList>
@@ -110,9 +108,9 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 			return "Error while reading file from S3 :::" + e.getMessage();
 		} 
 		catch (Exception e) {
-			context.getLogger().log("AuthLambdaHandler::Exception = "+e.getMessage());
+			context.getLogger().log("Auth Exception::Exception message : "+e.getMessage());
 			//e.printStackTrace();
-			return "Error while reading file from S3 :::" + e.getMessage();
+			return "Error in TIOP Auth :::" + e.getMessage();
 		} 
 		
 		finally {
@@ -125,7 +123,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 			} catch (Exception e) {
 				context.getLogger().log("AuthLambdaHandler::Exception::finally = "+e.getMessage());
 			}
-			context.getLogger().log("----------------------------------- TIOPAuthException::finally end");
+			context.getLogger().log("TIOPAuth::finally end");
 		}
 
 		return "Authenticate successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'";
@@ -134,8 +132,8 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			Class.forName("com.mysql.jdbc.Driver");
-			con = DriverManager.getConnection(dburl, dbuser, dbpass);
+			Class.forName(TIOPConstants.dbdriver);
+			con = DriverManager.getConnection(TIOPConstants.dburl, TIOPConstants.dbuser, TIOPConstants.dbpass);
 		}
 		return con;
 	}
@@ -155,10 +153,11 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
 
 		InvokeRequest request = new InvokeRequest();
-		request.withFunctionName("arn:aws:lambda:us-east-1:654654535046:function:TIOPDocumentValidation").withPayload(payloadObject.toString());
+		String TIOPDocumentValidation = System.getenv("TIOPDocumentValidation");
+		request.withFunctionName(TIOPDocumentValidation).withPayload(payloadObject.toString());
 		context.getLogger().log("Calling TIOPDocumentValidation with payload = "+payloadObject.toString());
 		InvokeResult invoke = client.invoke(request);
-		context.getLogger().log("Result invoking " + "arn:aws:lambda:us-east-1:654654535046:function:TIOPDocumentValidation  == " + ": " + invoke);
+		context.getLogger().log("Result invoking " +TIOPDocumentValidation +" == " + ": " + invoke);
 	}
 
 	
@@ -177,7 +176,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 			Node nodeEventList = listEventList.item(temp);
 			//context.getLogger().log("Current Element2 : " + nodeEventList.getNodeName());
 
-			if (nodeEventList.getNodeType() == Node.ELEMENT_NODE && nodeEventList.getNodeName().equals("EventList")) {
+			if (nodeEventList.getNodeType() == Node.ELEMENT_NODE && nodeEventList.getNodeName().equals(TIOPConstants.EventList)) {
 				Element elementEventList = (Element) nodeEventList;
 				
 				if(basicInfoMap == null || basicInfoMap.isEmpty()) {
@@ -232,21 +231,21 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 		String destination = null;
 		String gtinInfo = null;
 		
-		NodeList listObjectEvent = elementEventList.getElementsByTagName("ObjectEvent");
+		NodeList listObjectEvent = elementEventList.getElementsByTagName(TIOPConstants.ObjectEvent);
 		if(listObjectEvent != null) objEventCount = listObjectEvent.getLength();
 		
 		for (int temp = 0; temp < listObjectEvent.getLength(); temp++) {
 			Node nodeObjectEvent = listObjectEvent.item(temp);
 			//context.getLogger().log("Current Element3 : " + nodeObjectEvent.getNodeName());
 			if (nodeObjectEvent.getNodeType() == Node.ELEMENT_NODE
-					&& nodeObjectEvent.getNodeName().equals("ObjectEvent")) {
+					&& nodeObjectEvent.getNodeName().equals(TIOPConstants.ObjectEvent)) {
 				Element elementObjectEvent = (Element) nodeObjectEvent;
 				
 				
-				bizStep = getSimpleNode(elementObjectEvent, "bizStep");
+				bizStep = getSimpleNode(elementObjectEvent, TIOPConstants.bizStep);
 				//context.getLogger().log("bizStep == " + bizStep);
 				basicInfoMap.put("eventType", "1");
-				if(bizStep.contains(":shipping")) {
+				if(bizStep.contains(TIOPConstants.shipping)) {
 					//context.getLogger().log("Present");
 					if(source == null) {
 						source = extractGN(getSource(elementObjectEvent));
@@ -255,14 +254,14 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 				    } 
 					
 					if(destination == null) {
-						destination = getSimpleNode(elementObjectEvent, "tiopvoc:nts_gln");
+						destination = getSimpleNode(elementObjectEvent, TIOPConstants.tiop_nts_gln);
 						basicInfoMap.put("eventType", "1");
 						//context.getLogger().log("Current destination in OE== " + destination);
 				    } 
 				}
 				
 				if(gtinInfo == null || gtinInfo.isBlank()) {
-					Set<String> epcSetInfo = parseEPCList(elementObjectEvent, "epcList");
+					Set<String> epcSetInfo = parseEPCList(elementObjectEvent, TIOPConstants.epcList);
 					//context.getLogger().log("----- epcSet = " + epcSetInfo);
 					if(epcSetInfo != null && !epcSetInfo.isEmpty()) {
 						for(String gtin : epcSetInfo) {
@@ -273,19 +272,19 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 				}
 			}
 		}
-		NodeList listAggregationEvent = elementEventList.getElementsByTagName("AggregationEvent");
+		NodeList listAggregationEvent = elementEventList.getElementsByTagName(TIOPConstants.AggregationEvent);
 		if(listAggregationEvent != null) aggEventCount = listAggregationEvent.getLength();
 		for (int temp = 0; temp < listAggregationEvent.getLength(); temp++) {
 			Node nodeAggregationEvent = listAggregationEvent.item(temp);
 			// context.getLogger().log("Current Element3 : " + nodeObjectEvent.getNodeName());
 			if (nodeAggregationEvent.getNodeType() == Node.ELEMENT_NODE
-					&& nodeAggregationEvent.getNodeName().equals("AggregationEvent")) {
+					&& nodeAggregationEvent.getNodeName().equals(TIOPConstants.AggregationEvent)) {
 				Element elementAggregationEvent = (Element) nodeAggregationEvent;
 				
-				bizStep = getSimpleNode(elementAggregationEvent, "bizStep");
+				bizStep = getSimpleNode(elementAggregationEvent, TIOPConstants.bizStep);
 				basicInfoMap.put("eventType", "2");
 				//context.getLogger().log("bizStep == " + bizStep);
-				if(bizStep.contains(":shipping")) {
+				if(bizStep.contains(TIOPConstants.shipping)) {
 					//context.getLogger().log("Present");
 					if(source == null) {
 						source = extractGN(getSource(elementAggregationEvent));
@@ -296,14 +295,14 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 					
 					
 					if(destination == null) {
-						destination = getSimpleNode(elementAggregationEvent, "tiopvoc:nts_gln");
+						destination = getSimpleNode(elementAggregationEvent, TIOPConstants.tiop_nts_gln);
 						basicInfoMap.put("eventType", "2");
 						//context.getLogger().log("Current destination in OE== " + destination);
 				    } 
 				}
 				
 				if(gtinInfo == null || gtinInfo.isBlank()) {
-					Set<String> epcSetInfo = parseEPCList(elementAggregationEvent, "epcList");
+					Set<String> epcSetInfo = parseEPCList(elementAggregationEvent, TIOPConstants.epcList);
 					//context.getLogger().log("----- epcSet = " + epcSetInfo);
 					if(epcSetInfo != null && !epcSetInfo.isEmpty()) {
 						for(String gtin : epcSetInfo) {
@@ -333,12 +332,12 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 	
 
 	private  void parseAggregationEventt(Element elementEventList, List<String> gtin_uriList,  String fileName, int objEventCount, int aggEventCount, String gtinInfo, String source, String destination) throws TIOPException {
-		NodeList listAggregationEvent = elementEventList.getElementsByTagName("AggregationEvent");
+		NodeList listAggregationEvent = elementEventList.getElementsByTagName(TIOPConstants.AggregationEvent);
 		for (int temp = 0; temp < listAggregationEvent.getLength(); temp++) {
 			Node nodeAggregationEvent = listAggregationEvent.item(temp);
 			//context.getLogger().log("Current Element3 : " + nodeAggregationEvent.getNodeName());
 			if (nodeAggregationEvent.getNodeType() == Node.ELEMENT_NODE
-					&& nodeAggregationEvent.getNodeName().equals("AggregationEvent")) {
+					&& nodeAggregationEvent.getNodeName().equals(TIOPConstants.AggregationEvent)) {
 				Element elementAggregationEvent = (Element) nodeAggregationEvent;
 				
 //				if(source == null) {
@@ -348,7 +347,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 //				
 //				
 //				if(destination == null) {
-//					destination = getSimpleNode(elementAggregationEvent, "tiopvoc:nts_gln");
+//					destination = getSimpleNode(elementAggregationEvent, "tiop:nts_gln");
 //					context.getLogger().log("Current destination in AE== " + destination);
 //			    } 
 				
@@ -358,7 +357,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 //			    } 
 				
 				
-				Set<String> childEPCsSet = parseEPCList(elementAggregationEvent, "childEPCs");
+				Set<String> childEPCsSet = parseEPCList(elementAggregationEvent, TIOPConstants.childEPCs);
 //				String tmp = null;
 //				if(childEPCsSet == null || childEPCsSet.isEmpty()) {
 //					for(String gtin : childEPCsSet) {
@@ -379,8 +378,8 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 				
 				//context.getLogger().log("----- childEPCsSet = " + childEPCsSet);
 				Set<String> parentIDSet = new HashSet<String>();
-				String parentID = getSimpleNode(elementAggregationEvent, "parentID");
-				if(parentID != null && parentID.contains("urn:epc:id:sgtin")) {
+				String parentID = getSimpleNode(elementAggregationEvent, TIOPConstants.parentID);
+				if(parentID != null && parentID.contains(TIOPConstants.urn_sgtin)) {
 					parentID = parentID.substring(0, parentID.lastIndexOf('.'));
 					parentIDSet.add(parentID);
 				} 
@@ -397,7 +396,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 	
 
 	private  void parseObjectEvent(Element elementEventList, List<String> gtin_uriList, String fileName, int objEventCount, int aggEventCount, String gtinInfo, String source, String destination) throws TIOPException {
-		NodeList listObjectEvent = elementEventList.getElementsByTagName("ObjectEvent");
+		NodeList listObjectEvent = elementEventList.getElementsByTagName(TIOPConstants.ObjectEvent);
 		for (int temp = 0; temp < listObjectEvent.getLength(); temp++) {
 			Node nodeObjectEvent = listObjectEvent.item(temp);
 			//context.getLogger().log("Current Element3 : " + nodeObjectEvent.getNodeName());
@@ -413,7 +412,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 //				
 //				
 //				if(destination == null) {
-//					destination = getSimpleNode(elementObjectEvent, "tiopvoc:nts_gln");
+//					destination = getSimpleNode(elementObjectEvent, "tiop:nts_gln");
 //					context.getLogger().log("Current destination in OE== " + destination);
 //			    } 
 				
@@ -425,7 +424,7 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 //			    } 
 				
 				
-				Set<String> epcSet = parseEPCList(elementObjectEvent, "epcList");
+				Set<String> epcSet = parseEPCList(elementObjectEvent, TIOPConstants.epcList);
 //				String tmp = null;
 //				if(epcSet == null || epcSet.isEmpty()) {
 //					for(String gtin : epcSet) {
@@ -449,9 +448,6 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 	}
 
 	private  void oauthValidation(List<String> gtin_uriList, Set<String> epcSet, int eventType, String fileName, int objEventCount, int aggEventCount, String gtinInfo, String source, String destination) throws TIOPException {
-		int errorType = 3;
-		String modifiedBy = "tiop_auth";
-		
 		if(!epcSet.isEmpty() && !gtin_uriList.isEmpty()) {
 			for(String epc: epcSet) {
 				if(!gtin_uriList.contains(epc)) {
@@ -494,11 +490,11 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 
 	private  String getSource(Element elementObjectEvent) {
 		String source = null;
-		NodeList nodelistBizLocation = elementObjectEvent.getElementsByTagName("bizLocation");
+		NodeList nodelistBizLocation = elementObjectEvent.getElementsByTagName(TIOPConstants.bizLocation);
 		for (int temp = 0; temp < nodelistBizLocation.getLength(); temp++) {
 			Node nodeBizLocation = nodelistBizLocation.item(temp);
 			// context.getLogger().log("Current Element : " + nodeEPCList.getNodeName());
-			if (nodeBizLocation.getNodeType() == Node.ELEMENT_NODE && nodeBizLocation.getNodeName().equals("bizLocation")) {
+			if (nodeBizLocation.getNodeType() == Node.ELEMENT_NODE && nodeBizLocation.getNodeName().equals(TIOPConstants.bizLocation)) {
 				Element elementBizLocation = (Element) nodeBizLocation;
 				source = elementBizLocation.getElementsByTagName("id").item(0).getTextContent();
 			}
@@ -515,12 +511,12 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 			if (nodeEPCList.getNodeType() == Node.ELEMENT_NODE && nodeEPCList.getNodeName().equals(nodeName)) {
 				Element elementEPCList = (Element) nodeEPCList;
 
-				NodeList listEPC = elementObjectEvent.getElementsByTagName("epc");
+				NodeList listEPC = elementObjectEvent.getElementsByTagName(TIOPConstants.epc);
 				// context.getLogger().log("epc length : " + listEPC.getLength());
 				for (int j = 0; j < listEPC.getLength(); j++) {
-					String epc = elementEPCList.getElementsByTagName("epc").item(j).getTextContent();
+					String epc = elementEPCList.getElementsByTagName(TIOPConstants.epc).item(j).getTextContent();
 					//context.getLogger().log("epc uri [" + j + "] = " + epc);
-					if (epc.contains("urn:epc:id:sgtin")) {
+					if (epc.contains(TIOPConstants.urn_sgtin)) {
 						// context.getLogger().log("sgtin :::> " + epc.substring(0, epc.lastIndexOf('.')));
 						gtinSet.add(epc.substring(0, epc.lastIndexOf('.')));
 					}
