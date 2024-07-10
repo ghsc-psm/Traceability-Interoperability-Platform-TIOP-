@@ -33,7 +33,7 @@ public class TIOPValidationSendEmail {
 		if(message.contains("#")) {
 			String arr[] = message.split("#");
 			expId = arr[0];
-			message = arr[1];
+			message = arr[2];
 		}
 		
 		context.getLogger().log("updated - to "+toEmailSet+" --- message = "+message);
