@@ -7,14 +7,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.HttpURLConnection;
-import java.net.URI;
 import java.net.URL;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
@@ -30,18 +25,8 @@ import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 
-import org.json.JSONObject;
-
-//import org.json.simple.JSONArray;
-//import org.json.simple.JSONObject;
-//import org.json.simple.parser.JSONParser;
-
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
-import com.amazonaws.services.lambda.AWSLambda;
-import com.amazonaws.services.lambda.AWSLambdaAsyncClient;
-import com.amazonaws.services.lambda.model.InvokeRequest;
-import com.amazonaws.services.lambda.model.InvokeResult;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.s3.AmazonS3;
@@ -90,11 +75,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			String aggCount = mapEvent.get("aggEventCount");
 			if (aggCount != null)
 				aggEventCount = Integer.parseInt(aggCount);
-//			context.getLogger().log("TransfromLambdaHandler::Total ObjectEvent count = " + objEventCount);
-//			context.getLogger().log("TransfromLambdaHandler::Total AggregationEvent count = " + aggEventCount);
-//			context.getLogger().log("TransfromLambdaHandler::source = " + source);
-//			context.getLogger().log("TransfromLambdaHandler::destination = " + destination);
-//			context.getLogger().log("TransfromLambdaHandler::gtinInfo = " + gtinInfo);
+
 			context.getLogger().log("TransfromLambdaHandler::fileName = " + fileName);
 			context.getLogger().log("TransfromLambdaHandler::bucketName = " + bucketName);
 
@@ -115,7 +96,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			}
 			
 			context.getLogger().log("-----------------------------------TransfromLambdaHandler::2");
-			String urlString = TIOPConstants.ec2_xml_to_json_convert_url;  
+			String urlString = System.getenv(TIOPConstants.xmlToJsonConversionURL);  
 			//http://ec2-3-89-65-81.compute-1.amazonaws.com:8080/api/convert/json/2.0
 			String jsonInputString = textBuilder.toString();
 			// Create a URL object
@@ -157,13 +138,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				in.close();
 				String transformedJson = response.toString();
 				
-				// Print the response
-				// context.getLogger().log("Response: " + transformedJson);
-				
 				ObjectMapper mapper = new ObjectMapper();
 				mapper.configure(Feature.AUTO_CLOSE_SOURCE, true);
-//				mapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
-//				mapper.configure(JsonParser.Feature.INCLUDE_SOURCE_IN_LOCATION, false);
 
 		        // read the json strings and convert it into JsonNode
 				context.getLogger().log("-----------------------------------TransfromLambdaHandler::8.0.1");
@@ -178,7 +154,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 					JsonNode eventList = epcisBody.get("eventList");
 					int jsonObjEventCount = 0;
 					int jsonAggEventCount = 0;
-					StringBuilder payload = new StringBuilder();
+					//StringBuilder payload = new StringBuilder();
 					for (int i = 0; i < eventList.size(); i++) {
 						JsonNode chNode = eventList.get(i);
 						String chNodeStr = chNode.toString();
@@ -189,46 +165,12 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 						
 						if (eventType.contains(TIOPConstants.ObjectEvent)) {
 							jsonObjEventCount++;
-							chNodeStr = chNodeStr.replaceAll("\"type\":\"ObjectEvent\"", "\"eventType\":\"ObjectEvent\"");
-							context.getLogger().log("-----------chNodeStr2 = "+chNodeStr);
-							//chNodeStr = chNodeStr.replaceAll("\"type\": \"ObjectEvent\"", "\"eventType\":\"ObjectEvent\"");
-							//context.getLogger().log("-----------chNodeStr3 = "+chNodeStr);
 						} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
 							jsonAggEventCount++;
-							chNodeStr = chNodeStr.replaceAll("\"type\":\"AggregationEvent\"", "\"eventType\":\"AggregationEvent\"");
-							context.getLogger().log("-----------chNodeStr4 = "+chNodeStr);
-							//chNodeStr = chNodeStr.replaceAll("\"type\": \"AggregationEvent\"", "\"eventType\":\"AggregationEvent\"");
-							//context.getLogger().log("-----------chNodeStr5 = "+chNodeStr);
 						}
-						payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
-						payload.append(chNodeStr+"\n");
 
 					}
-					context.getLogger().log("-----------payload = "+payload.toString());
-/*					
-					try {
-						String apiURL = "https://ec2-18-233-6-149.compute-1.amazonaws.com:9200/epcis_index/_bulk";
-						String bearerToken = "Basic YWRtaW46dGVzdDEyMzQ=";
-						HttpRequest request = HttpRequest.newBuilder()
-					        	.POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
-					        	.uri(URI.create(apiURL))
-					        	.header("Content-Type", "application/xml")
-					        	.header("Authorization", bearerToken)
-					        	.build(); 
-					        
-					    HttpResponse<String> bulkResponse = HttpClient.newHttpClient()
-					        		.send(request, HttpResponse.BodyHandlers.ofString());
-					    
-					    int status = bulkResponse.statusCode();
-					    String body = (String) bulkResponse.body();
-
-					    context.getLogger().log("status-- "+status);
-					    context.getLogger().log("response -- "+body);
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
-					//invokeBulkLoadLamda(context, payload.toString());
-*/					
+				
 					context.getLogger().log("jsonObjEventCount = " + jsonObjEventCount);
 					context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
 
@@ -257,8 +199,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 					ObjectMetadata metadata = new ObjectMetadata();
 					InputStream streamIn = new ByteArrayInputStream(transformedJson.getBytes());
 					metadata.setContentLength(streamIn.available());
-					PutObjectRequest putRequest = new PutObjectRequest(TIOPConstants.destinationS3, fileName, streamIn,
-							metadata);
+					PutObjectRequest putRequest = new PutObjectRequest(System.getenv(System.getenv(TIOPConstants.destinationS3)), fileName, streamIn, metadata);
 					s3client1.putObject(putRequest);
 					insertTransformationInfo(context, fileName, jsonObjEventCount, jsonAggEventCount, gtinInfo, source,	destination);
 					
@@ -341,33 +282,22 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 		return "Transformation end successfully";
 	}
 	
-	private void invokeBulkLoadLamda(Context context, String payload) {
-		context.getLogger().log("Calling TIOPBulkLoad lamda");
-
-		JSONObject payloadObject = new JSONObject();
-		payloadObject.put("payload", payload);
-
-		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
-
-		InvokeRequest request = new InvokeRequest();
-		request.withFunctionName("arn:aws:lambda:us-east-1:654654535046:function:TIOPBulkLoad")
-				.withPayload(payloadObject.toString());
-		context.getLogger().log("Calling TIOPBulkLoad with payload");
-		InvokeResult invoke = client.invoke(request);
-		context.getLogger().log("Result invoking TIOPBulkLoad  == " + invoke);
-	}
 
 	private void sendMail(String fileName, final String htmlBody) {
-		final String username = TIOPConstants.smtp_user;
-		final String password = TIOPConstants.smtp_pass;
+		String smtpSecret = TIOPUtil.getSecretDetails(TIOPConstants.smtpSecretName);
+		String smtpHost = TIOPUtil.getKeyValue(smtpSecret, "smtpHost");
+		String username = TIOPUtil.getKeyValue(smtpSecret, "smtpUser");
+		String password = TIOPUtil.getKeyValue(smtpSecret, "smtPassword");
+		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtPort");
+		
 		String subject = "File Processing Issue: [" + fileName + "] - Attention Needed";
 		// Set up the SMTP server properties
 		Properties props = new Properties();
 		props.put("mail.smtp.auth", "true");
 		props.put("mail.smtp.starttls.enable", "true");
-		props.put("mail.smtp.host", TIOPConstants.smtp_host); // SMTP server address
-		props.put("mail.smtp.port", TIOPConstants.smtp_port);
-		props.put("mail.smtp.ssl.trust", TIOPConstants.smtp_host);
+		props.put("mail.smtp.host", smtpHost); // SMTP server address
+		props.put("mail.smtp.port", smtPort);
+		props.put("mail.smtp.ssl.trust", smtpHost);
 		props.put("mail.smtp.ssl.protocols", "TLSv1.2");
 		// Get the Session object
 		Session session = Session.getInstance(props, new javax.mail.Authenticator() {
@@ -398,8 +328,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			Class.forName(TIOPConstants.dbdriver);
-			con = DriverManager.getConnection(TIOPConstants.dburl, TIOPConstants.dbuser, TIOPConstants.dbpass);
+			con = TIOPUtil.getConnection();
 		}
 		return con;
 	}

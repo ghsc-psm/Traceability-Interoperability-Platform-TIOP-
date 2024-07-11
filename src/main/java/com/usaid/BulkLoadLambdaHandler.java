@@ -14,7 +14,6 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.ssl.SSLContextBuilder;
-import org.w3c.dom.Document;
 
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
@@ -43,7 +42,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		context.getLogger().log("fileName :: " + fileName);
 		S3Object s3object = null;
 		S3ObjectInputStream inputStream = null;
-		Document document;
 		try {
 			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
@@ -81,22 +79,16 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					JsonNode chNode = eventList.get(i);
 					String chNodeStr = chNode.toString();
 					String eventType = chNode.get("type").toString();
-					context.getLogger().log("-----------chNodeStr1 = "+chNodeStr);
+					//context.getLogger().log("-----------chNodeStr = "+chNodeStr);
 					
 					chNodeStr = chNodeStr.replaceAll("tiop:", "");
 					
 					if (eventType.contains(TIOPConstants.ObjectEvent)) {
 						jsonObjEventCount++;
 						chNodeStr = chNodeStr.replaceAll("\"type\":\"ObjectEvent\"", "\"eventType\":\"ObjectEvent\"");
-						//context.getLogger().log("-----------chNodeStr2 = "+chNodeStr);
-						//chNodeStr = chNodeStr.replaceAll("\"type\": \"ObjectEvent\"", "\"eventType\":\"ObjectEvent\"");
-						//context.getLogger().log("-----------chNodeStr3 = "+chNodeStr);
 					} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
 						jsonAggEventCount++;
 						chNodeStr = chNodeStr.replaceAll("\"type\":\"AggregationEvent\"", "\"eventType\":\"AggregationEvent\"");
-						//context.getLogger().log("-----------chNodeStr4 = "+chNodeStr);
-						//chNodeStr = chNodeStr.replaceAll("\"type\": \"AggregationEvent\"", "\"eventType\":\"AggregationEvent\"");
-						//context.getLogger().log("-----------chNodeStr5 = "+chNodeStr);
 					}
 					payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
 					payload.append(chNodeStr+"\n");
@@ -105,15 +97,14 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				context.getLogger().log("-----------payload = "+payload.toString());
 					
 				try {
-
-					String apiURL = "https://ec2-18-233-6-149.compute-1.amazonaws.com:9200/epcis_index/_bulk";
-					String bearerToken = "Basic YWRtaW46dGVzdDEyMzQ=";
-					
+					String blSecret = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.blSecretName));
+			        String apiURL = TIOPUtil.getKeyValue(blSecret, "apiURL");
+			        String authToken = TIOPUtil.getKeyValue(blSecret, "authToken");
 					CloseableHttpClient httpClient = createHttpClientWithDisabledSSL();
 					HttpPost request = new HttpPost(apiURL);
 			        StringEntity se = new StringEntity(payload.toString()); 
 			        request.setHeader("Content-Type", "application/json");
-			        request.setHeader("Authorization", bearerToken);
+			        request.setHeader("Authorization", authToken);
 			        request.setEntity(se);
 			        
 			        try (CloseableHttpResponse response = httpClient.execute(request)) {
@@ -123,15 +114,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					    context.getLogger().log("Response status-- "+status);
 					    context.getLogger().log("Response response -- "+body);
 			        }
-/*					
-					HttpRequest request = HttpRequest.newBuilder()
-				        	.POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
-				        	.uri(URI.create(apiURL))
-				        	.header("Content-Type", "application/xml")
-				        	.header("Authorization", bearerToken)
-				        	.build(); 
-					HttpResponse<String> bulkResponse = client.send(request, HttpResponse.BodyHandlers.ofString());
-*/				    
 				    
 				} catch (Exception e) {
 					e.printStackTrace();

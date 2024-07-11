@@ -1,13 +1,10 @@
 package com.usaid;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -29,17 +26,8 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
-import software.amazon.awssdk.services.secretsmanager.model.CreateSecretRequest;
-import software.amazon.awssdk.services.secretsmanager.model.CreateSecretResponse;
-import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
-import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
 
 public class RouterLambdaHandler implements RequestHandler<Object, String> {
 
@@ -56,9 +44,6 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		int objEventCount = 0;
 		int aggEventCount = 0;
 		
-		DataOutputStream wr = null;
-		HttpURLConnection connection = null;
-
 		S3Object s3object = null;
 		S3ObjectInputStream inputStream = null;
 
@@ -93,21 +78,12 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 			}
 			context.getLogger().log("RouterLambdaHandler::secretName = " + secretName);
 			try {
-		        Region region = Region.US_EAST_1;
-		        SecretsManagerClient secretsClient = SecretsManagerClient.builder()
-		                .region(region)
-		                .build();
-
-		        String countryrouting = getValue(context, secretsClient, secretName);
-		        
-		        String apiURL = getKeyValue(context, countryrouting, "APIURL");
-		        String bearerToken = getKeyValue(context, countryrouting, "BearerToken");
-		        
-		        apiURL = apiURL.replaceAll("\"", "");
-		        bearerToken = bearerToken.replaceAll("\"", "");
+		        String countryrouting = TIOPUtil.getSecretDetails(secretName);
+		        String apiURL = TIOPUtil.getKeyValue(countryrouting, "APIURL");
+		        String bearerToken = TIOPUtil.getKeyValue(countryrouting, "BearerToken");
 		        
 		        context.getLogger().log("RouterLambdaHandler::handleRequest::apiURL = "+apiURL);
-		        context.getLogger().log("RouterLambdaHandler::handleRequest::bearerToken = "+bearerToken);
+		        //context.getLogger().log("RouterLambdaHandler::handleRequest::bearerToken = "+bearerToken);
 		        
 		        AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 						.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
@@ -120,12 +96,11 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				while ((c = reader.read()) != -1) {
 					textBuilder.append((char) c);
 				}
-				context.getLogger().log("RouterLambdaHandler::handleRequest::INPUT XML = "+textBuilder.toString());
-		       
+				//context.getLogger().log("RouterLambdaHandler::handleRequest::INPUT XML = "+textBuilder.toString());
 		        
 				bearerToken = "Bearer " +bearerToken;
 			       
-		        context.getLogger().log("RouterLambdaHandler::handleRequest::1 -- bearerToken = "+bearerToken);
+		        //context.getLogger().log("RouterLambdaHandler::handleRequest::1 -- bearerToken = "+bearerToken);
 		        
 		        HttpPost request = new HttpPost(apiURL);
 		        StringEntity se = new StringEntity(textBuilder.toString()); 
@@ -183,66 +158,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				    
 				    
 		        }
-		        
-		        
-/*		        
-		        
-		        HttpRequest request = HttpRequest.newBuilder()
-			        	.POST(HttpRequest.BodyPublishers.ofString(textBuilder.toString()))
-			        	.uri(URI.create(apiURL))
-			        	.header("Content-Type", "application/xml")
-			        	.header("Authorization", bearerToken)
-			        	.build(); 
-			        
-			    HttpResponse<String> response = HttpClient.newHttpClient()
-			        		.send(request, HttpResponse.BodyHandlers.ofString());
-			    
-			    int status = response.statusCode();
-			    String body = (String) response.body();
-
-			    context.getLogger().log("status-- "+status);
-			    context.getLogger().log("response -- "+body);
-			    
-			    if(status == 200) {
-			    	insertRouterInfo(context, fileName, objEventCount, aggEventCount, gtinInfo, source,	destination);
-			    } else {
-			    	ObjectMapper mapper = new ObjectMapper();
-					JsonNode bodyNode = mapper.readTree(body);
-					String message = null;
-					JsonNode messageNode = bodyNode.get("message");
-					
-					if(messageNode == null) {
-						messageNode = bodyNode.get("errors");
-						if(messageNode != null) {
-							message = messageNode.toString();
-							message = message.split(":")[1];
-							message = message.replaceAll("}", "");
-						}
-					} else {
-						message = messageNode.toString();
-					}
-					
-					context.getLogger().log("raw message -- "+message);
-					
-					if(message != null) {
-						message = message.replaceAll("[\\[\\]]", "");
-						message = message.replaceAll("\"", "");
-						context.getLogger().log("final message -- "+message);
-						insertRouterErrorLog(context, message, fileName, objEventCount, aggEventCount, gtinInfo, source, destination);
-						
-						
-						Date date = new Date();
-						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
-						String strDate = formatter.format(date);
-						final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "+fileName+" which was received on "+strDate+".</h4>"
-								+ "<h4>Details of the Issue:</h4>"
-								+ "<p>An error occurred (HTTP "+status+") while routing the EPCIS document. "+ message+"</p>" 
-								+ "<p>TIOP operation team</p>";
-						TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-					}
-					
-			    }
-*/				
+				
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -251,21 +167,10 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		return "Router success";
 	}
 
-	private String getKeyValue(Context context, String secret, String key) throws JsonProcessingException, JsonMappingException {
-		String str = "";
-		ObjectMapper mapper = new ObjectMapper();
-		JsonNode node = mapper.readTree(secret);
-		if(node.get(key) != null) str = node.get(key).toString();
-		context.getLogger().log("value of "+key+" ::: " + str);
-		return str;
-	}
-
-
 
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			Class.forName(TIOPConstants.dbdriver);
-			con = DriverManager.getConnection(TIOPConstants.dburl, TIOPConstants.dbuser, TIOPConstants.dbpass);
+			con = TIOPUtil.getConnection();
 		}
 		return con;
 	}
@@ -442,87 +347,41 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		}
 	}
 
-/*	
-	public void getSecret(Context context, String secretName, String region) {
-        String endpoint =("secretsmanager." + region + ".amazonaws.com");
-        context.getLogger().log("--------------------- 1");
-        AwsClientBuilder.EndpointConfiguration config = new AwsClientBuilder.EndpointConfiguration(endpoint, region);
-        context.getLogger().log("--------------------- 2");
-        AWSSecretsManagerClientBuilder clientBuilder = AWSSecretsManagerClientBuilder.standard();
-        clientBuilder.setEndpointConfiguration(config);
-        AWSSecretsManager client = clientBuilder.build();
-        String secret = null;
-        ByteBuffer binarySecretData;
-        GetSecretValueRequest getSecretValueRequest = new GetSecretValueRequest().withSecretId(secretName);
-        GetSecretValueResult getSecretValueResponse = null;
-        try {
-        	context.getLogger().log("--------------------- 3");
-            getSecretValueResponse = client.getSecretValue(getSecretValueRequest);
-            context.getLogger().log("--------------------- 4 getSecretValueResponse = "+getSecretValueResponse);
-
-        } catch(Exception e) {
-            context.getLogger().log("The requested secret " + secretName + " was not found .. error = "+e.getMessage());
-            e.printStackTrace();
-        } 
-
-        if(getSecretValueResponse == null) {
-            return;
-        }
-
-        // Decrypted secret using the associated KMS CMK
-        // Depending on whether the secret was a string or binary, one of these fields will be populated
-        if(getSecretValueResponse.getSecretString() != null) {
-            secret = getSecretValueResponse.getSecretString();
-        }
-        else {
-            binarySecretData = getSecretValueResponse.getSecretBinary();
-        }
-
-        // Your code goes here.
-        context.getLogger().log("Secret Name : " + secretName + " -- Secret Value : " + secret);
-    }
-*/
-	
-	
-	//snippet-start:[secretsmanager.java2.create_secret.main]
-    public static String createNewSecret( SecretsManagerClient secretsClient, String secretName, String secretValue) {
-
-        try {
-            CreateSecretRequest secretRequest = CreateSecretRequest.builder()
-                .name(secretName)
-                .description("This secret was created by the AWS Secret Manager Java API")
-                .secretString(secretValue)
-                .build();
-
-            CreateSecretResponse secretResponse = secretsClient.createSecret(secretRequest);
-            return secretResponse.arn();
-
-        } catch (Exception e) {
-           e.printStackTrace();
-        }
-        return "";
-    }
+//    public static String createNewSecret( SecretsManagerClient secretsClient, String secretName, String secretValue) {
+//
+//        try {
+//            CreateSecretRequest secretRequest = CreateSecretRequest.builder()
+//                .name(secretName)
+//                .description("This secret was created by the AWS Secret Manager Java API")
+//                .secretString(secretValue)
+//                .build();
+//
+//            CreateSecretResponse secretResponse = secretsClient.createSecret(secretRequest);
+//            return secretResponse.arn();
+//
+//        } catch (Exception e) {
+//           e.printStackTrace();
+//        }
+//        return "";
+//    }
+//    
+//    public String getValue(Context context, SecretsManagerClient secretsClient, String secretName) {
+//    	String secret = "none";
+//    	try {
+//            GetSecretValueRequest valueRequest = GetSecretValueRequest.builder()
+//                    .secretId(secretName)
+//                    .build();
+//
+//            GetSecretValueResponse valueResponse = secretsClient.getSecretValue(valueRequest);
+//            secret = valueResponse.secretString();
+//            context.getLogger().log(secretName+" === "+secret);
+//
+//        } catch (Exception e) {
+//        	context.getLogger().log("RouterLambdaHandler::Exception = " + e.getMessage());
+//            e.printStackTrace();
+//        }
+//        return secret;
+//    }
     
-    public String getValue(Context context, SecretsManagerClient secretsClient, String secretName) {
-    	String secret = "none";
-    	try {
-            GetSecretValueRequest valueRequest = GetSecretValueRequest.builder()
-                    .secretId(secretName)
-                    .build();
-
-            GetSecretValueResponse valueResponse = secretsClient.getSecretValue(valueRequest);
-            secret = valueResponse.secretString();
-            context.getLogger().log(secretName+" === "+secret);
-
-        } catch (Exception e) {
-        	context.getLogger().log("RouterLambdaHandler::Exception = " + e.getMessage());
-            e.printStackTrace();
-        }
-        return secret;
-    }
-    
-    
-    //snippet-end:[secretsmanager.java2.create_secret.main]
-	
 	
 }

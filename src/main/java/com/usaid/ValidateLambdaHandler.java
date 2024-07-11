@@ -1,7 +1,6 @@
 package com.usaid;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -40,7 +39,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	@Override
 	public String handleRequest(Object event, Context context) {
 		this.context = context;
-	    context.getLogger().log("TIOPDocumentValidation::handleRequest ::: Start------");
+	    context.getLogger().log("TIOPDocumentValidation::handleRequest ::: Start");
 	    
 	    String source = null;
 	    String destination = null;
@@ -86,38 +85,15 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
 			s3object = s3client.getObject(bucketName, fileName);
 			inputStream = s3object.getObjectContent();
-			context.getLogger().log("-----------------------------------ValidateLambdaHandler 1");
-			
-//			AmazonS3 s3client1 = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
-//					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
-//			s3object1 = s3client1.getObject(bucketName, fileName);
-//			inputStream1 = s3object1.getObjectContent();
-//			context.getLogger().log("-----------------------------------ValidateLambdaHandler 2");
-//			StringBuilder textBuilder = new StringBuilder();
-//		    try (Reader reader = new BufferedReader(new InputStreamReader
-//		      (inputStream1, StandardCharsets.UTF_8))) {
-//		        int c = 0;
-//		        while ((c = reader.read()) != -1) {
-//		            textBuilder.append((char) c);
-//		        }
-//		    }
-//			
-//			//String text = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-//			context.getLogger().log("-----------------------------------ValidateLambdaHandler 3");
-
 			DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder builder = factory.newDocumentBuilder();
 			document = builder.parse(inputStream);
-			context.getLogger().log("-----------------------------------ValidateLambdaHandler 4");
 			document.getDocumentElement().normalize();
-			context.getLogger().log("-----------------------------------ValidateLambdaHandler 5");
 
 			this.con = getConnection();
 
 			// get <EPCISBody>
-			context.getLogger().log("-----------------------------------ValidateLambdaHandler 6");
 			NodeList listEPCISBody = document.getElementsByTagName("EPCISBody");
-			context.getLogger().log("-----------------------------------ValidateLambdaHandler 7");
 			for (int temp = 0; temp < listEPCISBody.getLength(); temp++) {
 				Node nodeEPCISBody = listEPCISBody.item(temp);
 				// context.getLogger().log("Current Element1 : " + nodeEPCISBody.getNodeName());
@@ -209,57 +185,13 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			Class.forName(TIOPConstants.dbdriver);
-			con = DriverManager.getConnection(TIOPConstants.dburl, TIOPConstants.dbuser, TIOPConstants.dbpass);
+			con = TIOPUtil.getConnection();
 		}
 		return con;
 	}
 	
-	
-//	private String getContact(String sourceGlnUri) {
-//		//context.getLogger().log("rdsDbTeat ::: Start");
-//	 StringBuffer contactList = new StringBuffer();
-//	 String query = "select distinct first_name , last_name, email  from contact c \r\n"
-//	 		+ "inner join  trading_partner tp on c.partner_id =tp.partner_id\r\n"
-//	 		+ "inner join location l on tp.partner_id =l.partner_id\r\n"
-//	 		+ "inner join tiop_rule tr on tr.source_location_id = l.location_id\r\n"
-//	 		+ "where c.current_indicator ='A' and l.current_indicator ='A'\r\n"
-//	 		+ "and tr.source_gln_uri = '"+sourceGlnUri+"'";
-//		try {
-//			context.getLogger().log("getContact ::: Start");
-//			con = getConnection();
-//			context.getLogger().log("getContact ::: con = "+con);
-//			Statement stmt = con.createStatement();
-//			context.getLogger().log("getContact ::: query = "+query);
-//			ResultSet rs = stmt.executeQuery(query);
-//			boolean more= false;
-//			while (rs.next()) {
-//				if(more) contactList.append(",");
-//				if(rs.getString(1) != null) contactList.append(rs.getString(3));
-//			}
-//			
-//			if(gtin_uriList.isEmpty()) {
-//				context.getLogger().log("<<<<<<<<<<<<< No contact found for source input.");
-//			}
-//			
-//		} catch (Exception e) {
-//			context.getLogger().log("rdsDbTeat ::: db error = " + e.getMessage());
-//		}
-//		context.getLogger().log("getContact ::: DB ResultSet = "+contactList);
-//		return contactList.toString();
-//
-//	}
-	
 	private Set<String> getContact(String sourceGlnUri) {
-		// context.getLogger().log("rdsDbTeat ::: Start");
-		//StringBuffer contactList = new StringBuffer();
 		Set<String> toEmailSet = new HashSet<String>();
-		String query1 = "select distinct first_name , last_name, email  from contact c \r\n"
-				+ "inner join  trading_partner tp on c.partner_id =tp.partner_id\r\n"
-				+ "inner join location l on tp.partner_id =l.partner_id\r\n"
-				+ "inner join tiop_rule tr on tr.source_location_id = l.location_id\r\n"
-				+ "where c.current_indicator ='A' and l.current_indicator ='A'\r\n" + "and tr.source_gln_uri = '"
-				+ sourceGlnUri + "'";
 		String query = "select distinct first_name , last_name, email  \r\n"
 				+ "from contact c \r\n"
 				+ "inner join  trading_partner tp on c.partner_id =tp.partner_id\r\n"
@@ -276,20 +208,8 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 			Statement stmt = con.createStatement();
 			context.getLogger().log("getContact ::: query = " + query);
 			ResultSet rs = stmt.executeQuery(query);
-			boolean more = false;
 			while (rs.next()) {
 				toEmailSet.add(rs.getString(3));
-//				if (more)
-//					contactList.append(",");
-//				if (rs.getString(1) != null)
-//					contactList.append(rs.getString(1));
-//				contactList.append(" ");
-//				if (rs.getString(2) != null)
-//					contactList.append(rs.getString(2));
-//				contactList.append("#");
-//				if (rs.getString(3) != null)
-//					contactList.append(rs.getString(3));
-//				more = true;
 			}
 
 		} catch (Exception e) {
