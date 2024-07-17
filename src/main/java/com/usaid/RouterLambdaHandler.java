@@ -113,8 +113,8 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		        	int status = response.getStatusLine().getStatusCode();
 				    String body = new String(response.getEntity().getContent().readAllBytes());
 
-				    context.getLogger().log("Response status--> "+status);
-				    context.getLogger().log("Response response --> "+body);
+				    context.getLogger().log("Response status---> "+status);
+				    context.getLogger().log("Response response ---> "+body);
 				    
 				    if(status == 200) {
 				    	insertRouterInfo(context, fileName, objEventCount, aggEventCount, gtinInfo, source,	destination);

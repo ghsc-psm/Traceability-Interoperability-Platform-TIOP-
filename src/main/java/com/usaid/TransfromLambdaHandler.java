@@ -10,6 +10,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
@@ -42,6 +43,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 	private Connection con;
+	private String secretDetails;
 
 	@Override
 	public String handleRequest(Object event, Context context) {
@@ -78,7 +80,9 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 			context.getLogger().log("TransfromLambdaHandler::fileName = " + fileName);
 			context.getLogger().log("TransfromLambdaHandler::bucketName = " + bucketName);
-
+			
+			secretDetails = mapEvent.get("secretDetails");
+			
 		}
 
 		try {
@@ -95,10 +99,16 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				textBuilder.append((char) c);
 			}
 			
+			this.con = getConnection(secretDetails);
+			
+			context.getLogger().log("-----------------------------------TransfromLambdaHandler::con = "+con);
+			
 			context.getLogger().log("-----------------------------------TransfromLambdaHandler::2");
 			String urlString = System.getenv(TIOPConstants.xmlToJsonConversionURL);  
+			context.getLogger().log("-----------------------------------TransfromLambdaHandler::urlString = "+urlString);
 			//http://ec2-3-89-65-81.compute-1.amazonaws.com:8080/api/convert/json/2.0
 			String jsonInputString = textBuilder.toString();
+			context.getLogger().log("-----------------------------------TransfromLambdaHandler::jsonInputString = "+jsonInputString);
 			// Create a URL object
 			URL url = new URL(urlString);
 			// Open a connection
@@ -149,7 +159,6 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 		        // display the JsonNode
 		          
 		        JsonNode epcisBody = node.get("epcisBody");
-				
 				if (epcisBody != null) {
 					JsonNode eventList = epcisBody.get("eventList");
 					int jsonObjEventCount = 0;
@@ -157,12 +166,10 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 					//StringBuilder payload = new StringBuilder();
 					for (int i = 0; i < eventList.size(); i++) {
 						JsonNode chNode = eventList.get(i);
-						String chNodeStr = chNode.toString();
+						//String chNodeStr = chNode.toString();
 						String eventType = chNode.get("type").toString();
-						context.getLogger().log("-----------chNodeStr1 = "+chNodeStr);
-						
-						chNodeStr = chNodeStr.replaceAll("tiop:", "");
-						
+						//context.getLogger().log("-----------chNodeStr1 = "+chNodeStr);
+						//chNodeStr = chNodeStr.replaceAll("tiop:", "");
 						if (eventType.contains(TIOPConstants.ObjectEvent)) {
 							jsonObjEventCount++;
 						} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
@@ -199,7 +206,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 					ObjectMetadata metadata = new ObjectMetadata();
 					InputStream streamIn = new ByteArrayInputStream(transformedJson.getBytes());
 					metadata.setContentLength(streamIn.available());
-					PutObjectRequest putRequest = new PutObjectRequest(System.getenv(System.getenv(TIOPConstants.destinationS3)), fileName, streamIn, metadata);
+					PutObjectRequest putRequest = new PutObjectRequest(System.getenv(TIOPConstants.destinationS3), fileName, streamIn, metadata);
 					s3client1.putObject(putRequest);
 					insertTransformationInfo(context, fileName, jsonObjEventCount, jsonAggEventCount, gtinInfo, source,	destination);
 					
@@ -290,7 +297,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 		String password = TIOPUtil.getKeyValue(smtpSecret, "smtPassword");
 		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtPort");
 		
-		String subject = "File Processing Issue: [" + fileName + "] - Attention Needed";
+		String env = System.getenv(TIOPConstants.env);
+		final String subject = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Attention Needed";
 		// Set up the SMTP server properties
 		Properties props = new Properties();
 		props.put("mail.smtp.auth", "true");
@@ -310,25 +318,32 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			// Create a default MimeMessage object
 			Message message = new MimeMessage(session);
 			// Set From: header field
-			message.setFrom(new InternetAddress("schatterjee@ghsc-psm.org"));
+			message.setFrom(new InternetAddress(System.getenv(TIOPConstants.toEmailId)));
 			// Set To: header field
-			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse("swarchat@in.ibm.com,wirshad@us.ibm.com,jaideep.joshi@ibm.com"));
+			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(System.getenv(TIOPConstants.fromEmailId)));
 			// Set Subject: header field
 			message.setSubject(subject);
 			// Set the actual message
 			message.setContent(htmlBody, "text/html");
 			// Send message
 			Transport.send(message);
-			// context.getLogger().log("-----------------------------------java
 			// sendemail-send");
 		} catch (MessagingException e) {
 			e.printStackTrace();
 		}
 	}
 
-	private Connection getConnection() throws ClassNotFoundException, SQLException {
+	private Connection getConnection(String secretDetails) throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			con = TIOPUtil.getConnection();
+			String username = TIOPUtil.getKeyValue(secretDetails, "username");
+			String password = TIOPUtil.getKeyValue(secretDetails, "password");
+			String host = TIOPUtil.getKeyValue(secretDetails, "host");
+			String port = TIOPUtil.getKeyValue(secretDetails, "port");
+			//String dbInstanceIdentifier = getKeyValue(secretDetails, "dbInstanceIdentifier");
+			String dbUrl = "jdbc:mysql://"+host+":"+port+"/tiopdb";
+			System.out.println("TIOPUtil::getConnection::dbUrl = "+dbUrl);
+			Class.forName(TIOPConstants.dbdriver);
+			con = DriverManager.getConnection(dbUrl, username, password);
 		}
 		return con;
 	}
@@ -369,7 +384,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				+ "'tiop_transformation', -- id that insert data in tiopdb\r\n" + "'A',\r\n" + "'');";
 		try {
 			// context.getLogger().log("insertErrorLog ::: Start");
-			con = getConnection();
+			con = getConnection(this.secretDetails);
 			// context.getLogger().log("insertErrorLog ::: con = "+con);
 			Statement stmt = con.createStatement();
 			context.getLogger().log("insertBasicInfo ::: query = " + query);
@@ -420,7 +435,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 		try {
 			context.getLogger().log("insertErrorLog ::: Start");
-			con = getConnection();
+			con = getConnection(this.secretDetails);
 			//context.getLogger().log("insertErrorLog ::: con = " + con);
 			Statement stmt = con.createStatement();
 			// context.getLogger().log("insertErrorLog ::: query = "+query);

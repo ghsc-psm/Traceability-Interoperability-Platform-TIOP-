@@ -21,14 +21,8 @@ public class TIOPValidationSendEmail {
 
 	static void sendMail(Context context, int type, Set<String> toEmailSet, String fileName, String message) {
 		context.getLogger().log("TIOPValidationSendEmail::sendMail start - to "+toEmailSet+" --- message = "+message);
-		//String name = "";
 		String expId = "";
 		List<String> toAddress = new ArrayList<String>();
-//		if(to.contains("#")) {
-//			String arr[] = to.split("#");
-//			name = arr[0];
-//			to = arr[1];
-//		}
 		
 		if(message.contains("#")) {
 			String arr[] = message.split("#");
@@ -38,15 +32,21 @@ public class TIOPValidationSendEmail {
 		
 		context.getLogger().log("updated - to "+toEmailSet+" --- message = "+message);
 		
-		String to = "swarchat@in.ibm.com";
 		if(toEmailSet != null && !toEmailSet.isEmpty()) {
 			for(String emailId : toEmailSet) {
 				toAddress.add(emailId);
 			}
 		} 
-		toAddress.add(to);
 		
-		
+		String to = System.getenv(TIOPConstants.toEmailId); 
+		if(to !=null && to.contains(",")) {
+			String arr[] = to.split(",");
+			for(int i=0; i<arr.length; i++) {
+				toAddress.add(arr[i]);
+			}
+		} else if(to !=null) {
+			toAddress.add(to);
+		}
 		
 		Date cDate = new Date();
 		SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
@@ -59,13 +59,9 @@ public class TIOPValidationSendEmail {
 		String toDate = formatter.format(cDate);
 		
 		context.getLogger().log("For testing purpose memail is ending to "+to+"  -- curDate = "+curDate+"  -- toDate = "+toDate);
-//		
-//		final String source = "urn:epc:id:sgln:87922754.0001.0";
-//		final String destination = "2340009878907";
-//		final String gtin = "urn:epc:id:sgtin:0000128.239405";
-
-		final String FROM = "schatterjee@ghsc-psm.org";
-		final String SUBJECT = "File Processing Issue: ["+fileName+"] - Your Attention Needed";
+		String FROM = System.getenv(TIOPConstants.fromEmailId);
+		String env = System.getenv(TIOPConstants.env);
+		String SUBJECT = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Your Attention Needed";
 		
 		final String HTMLBODY = "Dear TIOP Partner,"
 				+ "<p>We are writing to inform you of an issue ["+expId+"] encountered while processing the file "+fileName+" which we received on "+curDate+"."
@@ -76,38 +72,34 @@ public class TIOPValidationSendEmail {
 				+ "<p>Thank you for your cooperation</p>"
 				+ "<p>Sincerely,</P>"
 			    + "<p>TIOP operation team</P>";
-
 		
 		final String TEXTBODY = "This email was sent through Amazon SES using the AWS SDK for Java.";
-		
-		
-		
-//		toAddress.add("wirshad@us.ibm.com");
-//		toAddress.add("jaideep.joshi@ibm.com");
 
 		try {
-			AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
-					// Replace US_WEST_2 with the AWS Region you're using for
-					// Amazon SES.
-					.withRegion(Regions.US_EAST_1).build();
-			context.getLogger().log("The email send start - 1");
-			SendEmailRequest request = new SendEmailRequest().withDestination(new Destination().withToAddresses(toAddress))
-					.withMessage(new Message()
-					.withBody(new Body().withHtml(new Content().withCharset("UTF-8").withData(HTMLBODY))
-					.withText(new Content().withCharset("UTF-8").withData(TEXTBODY)))
-					.withSubject(new Content().withCharset("UTF-8").withData(SUBJECT)))
-					.withSource(FROM);
-			// Comment or remove the next line if you are not using a
-			// configuration set
-			// .withConfigurationSetName(CONFIGSET)
-			//;
-			context.getLogger().log("The email send start - to "+toAddress);
-			client.sendEmail(request);
-			context.getLogger().log("Email sent to -- " + toAddress);
+			context.getLogger().log("The email send start");
+			sendMail(context, toAddress, FROM, SUBJECT, HTMLBODY, TEXTBODY);
 		} catch (Exception ex) {
 			context.getLogger().log("The email was not sent. Error message: " + ex.getMessage());
 		}
 
+	}
+
+	private static void sendMail(Context context, List<String> toAddress, final String FROM, final String SUBJECT,
+			final String HTMLBODY, final String TEXTBODY) {
+		AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
+				// Replace US_WEST_2 with the AWS Region you're using for
+				// Amazon SES.
+				.withRegion(Regions.US_EAST_1).build();
+		context.getLogger().log("sendMail start");
+		SendEmailRequest request = new SendEmailRequest().withDestination(new Destination().withToAddresses(toAddress))
+				.withMessage(new Message()
+				.withBody(new Body().withHtml(new Content().withCharset("UTF-8").withData(HTMLBODY))
+				.withText(new Content().withCharset("UTF-8").withData(TEXTBODY)))
+				.withSubject(new Content().withCharset("UTF-8").withData(SUBJECT)))
+				.withSource(FROM);
+		context.getLogger().log("The email send start - to "+toAddress);
+		client.sendEmail(request);
+		context.getLogger().log("Email sent to -- " + toAddress);
 	}
 
 }

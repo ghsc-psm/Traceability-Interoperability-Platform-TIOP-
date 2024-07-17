@@ -7,8 +7,8 @@ public interface TIOPConstants {
 	
 	String destinationS3 = "destinationS3"; 
 	
-	String toEmail = "HSS-GS1GlobalStandards-HQ@ghsc-psm.org";
-	String fromEmail = "schatterjee@ghsc-psm.org";
+	String toEmailId = "toEmailId"; //"HSS-GS1GlobalStandards-HQ@ghsc-psm.org";
+	String fromEmailId = "fromEmailId";
 	
 	String env = "env";
 	String dbdriver = "com.mysql.jdbc.Driver";
