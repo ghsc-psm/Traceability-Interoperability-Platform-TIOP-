@@ -1,11 +1,5 @@
 package com.usaid;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -35,8 +29,6 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.ObjectMetadata;
-import com.amazonaws.services.s3.model.PutObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream; 
 
@@ -185,6 +177,8 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		String secretDetails = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.dbSecret));
 		context.getLogger().log("Result invoking TIOPRouter  == " + secretDetails);
 		payloadObject.put("secretDetails", secretDetails);
+		String smtpSecretName = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.smtpSecretName));
+		payloadObject.put("smtpSecretName", smtpSecretName);
 		
 		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
 		String TIOPDocumentTransform = System.getenv("TIOPDocumentTransform");

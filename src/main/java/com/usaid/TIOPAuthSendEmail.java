@@ -22,7 +22,7 @@ public class TIOPAuthSendEmail {
 		if(to !=null && to.contains(",")) {
 			String arr[] = to.split(",");
 			for(int i=0; i<arr.length; i++) {
-				toAddress.add(arr[i]);
+				toAddress.add(arr[i].trim());
 			}
 		} else if(to !=null) {
 			toAddress.add(to);

@@ -44,6 +44,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 	private Connection con;
 	private String secretDetails;
+	private String smtpSecret;
 
 	@Override
 	public String handleRequest(Object event, Context context) {
@@ -82,6 +83,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			context.getLogger().log("TransfromLambdaHandler::bucketName = " + bucketName);
 			
 			secretDetails = mapEvent.get("secretDetails");
+			smtpSecret = mapEvent.get("smtpSecretName");
 			
 		}
 
@@ -105,10 +107,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			
 			context.getLogger().log("-----------------------------------TransfromLambdaHandler::2");
 			String urlString = System.getenv(TIOPConstants.xmlToJsonConversionURL);  
-			context.getLogger().log("-----------------------------------TransfromLambdaHandler::urlString = "+urlString);
-			//http://ec2-3-89-65-81.compute-1.amazonaws.com:8080/api/convert/json/2.0
 			String jsonInputString = textBuilder.toString();
-			context.getLogger().log("-----------------------------------TransfromLambdaHandler::jsonInputString = "+jsonInputString);
 			// Create a URL object
 			URL url = new URL(urlString);
 			// Open a connection
@@ -152,9 +151,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				mapper.configure(Feature.AUTO_CLOSE_SOURCE, true);
 
 		        // read the json strings and convert it into JsonNode
-				context.getLogger().log("-----------------------------------TransfromLambdaHandler::8.0.1");
 		        JsonNode node = mapper.readTree(transformedJson);
-		        context.getLogger().log("-----------------------------------TransfromLambdaHandler::8.1");
+		        context.getLogger().log("-----------------------------------TransfromLambdaHandler::8");
 
 		        // display the JsonNode
 		          
@@ -291,11 +289,10 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 	
 
 	private void sendMail(String fileName, final String htmlBody) {
-		String smtpSecret = TIOPUtil.getSecretDetails(TIOPConstants.smtpSecretName);
 		String smtpHost = TIOPUtil.getKeyValue(smtpSecret, "smtpHost");
 		String username = TIOPUtil.getKeyValue(smtpSecret, "smtpUser");
-		String password = TIOPUtil.getKeyValue(smtpSecret, "smtPassword");
-		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtPort");
+		String password = TIOPUtil.getKeyValue(smtpSecret, "smtpPassword");
+		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtpPort");
 		
 		String env = System.getenv(TIOPConstants.env);
 		final String subject = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Attention Needed";
