@@ -16,12 +16,13 @@ public class TIOPUtil {
 
 	public static Connection getConnection() throws ClassNotFoundException, SQLException {
 		String secretDetails = getSecretDetails(System.getenv(TIOPConstants.dbSecret));
-		System.out.println("TIOPUtil::getConnection::secretDetails = "+secretDetails);
-		String username = getKeyValue(secretDetails, "username");
-		String password = getKeyValue(secretDetails, "password");
-		String host = getKeyValue(secretDetails, "host");
-		String port = getKeyValue(secretDetails, "port");
-		//String dbInstanceIdentifier = getKeyValue(secretDetails, "dbInstanceIdentifier");
+		//System.out.println("TIOPUtil::getConnection::secretDetails = "+secretDetails);
+		DBInfo dbInfo = getDBInfo(secretDetails);
+		//System.out.println("TIOPUtil::getConnection::dbInfo = "+dbInfo.toString());
+		String username = dbInfo.getUsername();
+		String password = dbInfo.getPassword();
+		String host = dbInfo.getHost();
+		String port = dbInfo.getPort();
 		String dbUrl = "jdbc:mysql://"+host+":"+port+"/tiopdb";
 		System.out.println("TIOPUtil::getConnection::dbUrl = "+dbUrl);
 		Class.forName(TIOPConstants.dbdriver);
@@ -56,6 +57,17 @@ public class TIOPUtil {
 		} 
 
 		return str.replaceAll("\"", "");
+	}
+	
+	public static DBInfo getDBInfo(String secret) {
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			DBInfo dbInfo = mapper.readValue(secret, DBInfo.class);
+			return dbInfo;
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return null;
 	}
 
 }

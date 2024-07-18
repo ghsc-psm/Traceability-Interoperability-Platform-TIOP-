@@ -50,8 +50,6 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		int aggEventCount = 0;
 		S3Object s3object = null;
 		S3ObjectInputStream inputStream = null;
-//		S3Object s3object1 = null;
-//		S3ObjectInputStream inputStream1 = null;
 		Document document;
 		
 		 if(event instanceof LinkedHashMap) {
@@ -175,7 +173,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		payloadObject.put("aggEventCount", String.valueOf(aggEventCount));
 		
 		String secretDetails = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.dbSecret));
-		context.getLogger().log("Result invoking TIOPRouter  == " + secretDetails);
+		//context.getLogger().log("Result invoking TIOPRouter  == " + secretDetails);
 		payloadObject.put("secretDetails", secretDetails);
 		String smtpSecretName = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.smtpSecretName));
 		payloadObject.put("smtpSecretName", smtpSecretName);
@@ -432,9 +430,8 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 					&& nodeDestinationList.getNodeName().equals(TIOPConstants.destinationList)) {
 				Element elementDestinationList = (Element) nodeDestinationList;
 				NodeList lisDestination = elementDestinationList.getElementsByTagName(TIOPConstants.destination);
-				for (int j = 0; j < lisDestination.getLength(); j++) {
-					location = elementDestinationList.getElementsByTagName(TIOPConstants.destination).item(j).getTextContent();
-				}
+				if(lisDestination != null && lisDestination.getLength() > 0)
+					location = elementDestinationList.getElementsByTagName(TIOPConstants.destination).item(0).getTextContent();
 			}
 		}
 		return location;

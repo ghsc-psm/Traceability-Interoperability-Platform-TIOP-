@@ -55,10 +55,11 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			StringBuilder textBuilder = new StringBuilder();
 
 			Reader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-			int c = 0;
-			while ((c = reader.read()) != -1) {
-				textBuilder.append((char) c);
-			}
+			char[] buffer = new char[1024];
+            int numCharsRead;
+            while ((numCharsRead = reader.read(buffer)) != -1) {
+                textBuilder.append(buffer, 0, numCharsRead);
+            }
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest::INPUT Json = "+textBuilder.toString());
 			
 			ObjectMapper mapper = new ObjectMapper();

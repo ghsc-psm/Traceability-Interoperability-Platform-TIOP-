@@ -96,16 +96,15 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			StringBuilder textBuilder = new StringBuilder();
 
 			Reader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
-			int c = 0;
-			while ((c = reader.read()) != -1) {
-				textBuilder.append((char) c);
-			}
+			
+			char[] buffer = new char[1024];
+            int numCharsRead;
+            while ((numCharsRead = reader.read(buffer)) != -1) {
+                textBuilder.append(buffer, 0, numCharsRead);
+            }
 			
 			this.con = getConnection(secretDetails);
 			
-			context.getLogger().log("-----------------------------------TransfromLambdaHandler::con = "+con);
-			
-			context.getLogger().log("-----------------------------------TransfromLambdaHandler::2");
 			String urlString = System.getenv(TIOPConstants.xmlToJsonConversionURL);  
 			String jsonInputString = textBuilder.toString();
 			// Create a URL object
@@ -249,9 +248,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				context.getLogger().log("POST request failed. Response Code:::: " + responseCode);
 			}
 			context.getLogger().log("-----------------------------------TransfromLambdaHandler::10");
-
 			// Disconnect the connection
-
 			connection.disconnect();
 
 		} catch (Exception e) {
@@ -332,11 +329,12 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
 	private Connection getConnection(String secretDetails) throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
-			String username = TIOPUtil.getKeyValue(secretDetails, "username");
-			String password = TIOPUtil.getKeyValue(secretDetails, "password");
-			String host = TIOPUtil.getKeyValue(secretDetails, "host");
-			String port = TIOPUtil.getKeyValue(secretDetails, "port");
-			//String dbInstanceIdentifier = getKeyValue(secretDetails, "dbInstanceIdentifier");
+			DBInfo dbInfo = TIOPUtil.getDBInfo(secretDetails);
+			System.out.println("TIOPUtil::getConnection::dbInfo = "+dbInfo.toString());
+			String username = dbInfo.getUsername();
+			String password = dbInfo.getPassword();
+			String host = dbInfo.getHost();
+			String port = dbInfo.getPort();
 			String dbUrl = "jdbc:mysql://"+host+":"+port+"/tiopdb";
 			System.out.println("TIOPUtil::getConnection::dbUrl = "+dbUrl);
 			Class.forName(TIOPConstants.dbdriver);
@@ -462,18 +460,17 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				+ "'" + msg
 				+ "',  -- Event counts mismatch between original XML 1.2 version document and converted JSON 2.0 document (1200, 1000) -- Exception detail\r\n"
 				+ "'" + strDate + "',\r\n" 
-				+ "'tiop_transformation', -- id that insert data in tiopdb\r\n" + "'"
-				+ strDate + "',\r\n" 
+				+ "'tiop_transformation', -- id that insert data in tiopdb\r\n" 
+				+ "'" + strDate + "',\r\n" 
 				+ "'tiop_transformation', -- id that insert data in tiopdb\r\n" 
 				+ "'A',\r\n"
 				+ "''); ";
-
 		try {
 			context.getLogger().log("insertErrorLog ::: Start");
 			con = getConnection(this.secretDetails);
 			//context.getLogger().log("insertErrorLog ::: con = " + con);
 			Statement stmt = con.createStatement();
-			// context.getLogger().log("insertErrorLog ::: query = "+query);
+			context.getLogger().log("insertErrorLog ::: query = "+query);
 			stmt.executeUpdate(query);
 			context.getLogger().log("insertErrorLog ::: query inserted successfully for ");
 		} catch (Exception e) {
