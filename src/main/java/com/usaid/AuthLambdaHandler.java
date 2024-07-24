@@ -254,10 +254,9 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 				if(gtinInfo == null || gtinInfo.isBlank()) {
 					Set<String> epcSetInfo = parseEPCList(elementObjectEvent, TIOPConstants.epcList);
 					//context.getLogger().log("----- epcSet = " + epcSetInfo);
-					if(epcSetInfo != null && !epcSetInfo.isEmpty()) {
-						for(String gtin : epcSetInfo) {
-							gtinInfo = gtin;
-						}
+					if(epcSetInfo != null && !epcSetInfo.isEmpty()) 
+					{
+						gtinInfo = epcSetInfo.iterator().next();
 						//context.getLogger().log("----- epcInfo = " + gtinInfo);
 					}
 				}

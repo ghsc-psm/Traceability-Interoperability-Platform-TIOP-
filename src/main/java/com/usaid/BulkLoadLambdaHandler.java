@@ -4,6 +4,11 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 import javax.net.ssl.SSLContext;
 
@@ -30,11 +35,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
+	private Connection con;
+	
 	@Override
 	public String handleRequest(S3Event s3Event, Context context) {
 		context.getLogger().log("BulkLoadLambdaHandler::handleRequest::Start");
 		String bucketName = "";
 		String fileName = "";
+		int jsonObjEventCount = 0;
+		int jsonAggEventCount = 0;
+		String destination = "";
+		String tiopbillto_gln = "";
+		String source = "";
+		
+		
 	    context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Stat");
 		bucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
@@ -60,41 +74,67 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
             while ((numCharsRead = reader.read(buffer)) != -1) {
                 textBuilder.append(buffer, 0, numCharsRead);
             }
-			context.getLogger().log("BulkLoadLambdaHandler::handleRequest::INPUT Json = "+textBuilder.toString());
+			//context.getLogger().log("BulkLoadLambdaHandler::handleRequest::INPUT Json = "+textBuilder.toString());
 			
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.configure(Feature.AUTO_CLOSE_SOURCE, true);
 	        // read the json strings and convert it into JsonNode
-			context.getLogger().log("-----------------------------------BulkLoadLambdaHandler::8.0.1");
 	        JsonNode node = mapper.readTree(textBuilder.toString());
-	        context.getLogger().log("-----------------------------------BulkLoadLambdaHandler::8.1");
 	          
 	        JsonNode epcisBody = node.get("epcisBody");
 			
 			if (epcisBody != null) {
 				JsonNode eventList = epcisBody.get("eventList");
-				int jsonObjEventCount = 0;
-				int jsonAggEventCount = 0;
+				jsonObjEventCount = 0;
+				jsonAggEventCount = 0;
+				destination = "";
+				tiopbillto_gln = "";
+				source = "";
 				StringBuilder payload = new StringBuilder();
+				
+				for (int i = 0; i < eventList.size(); i++) {
+					JsonNode chNode = eventList.get(i);
+					String eventType = chNode.get("type").toString();
+					String bizStep = chNode.get("bizStep").toString();
+					if(bizStep.contains("shipping")) {
+						destination = chNode.get("tiop:nts_gln").toString();
+						tiopbillto_gln = chNode.get("tiop:billto_gln").toString();
+						JsonNode sopurceNode = chNode.get("bizLocation");
+						source = sopurceNode.get("id").toString();
+					}
+					
+					if (eventType.contains(TIOPConstants.ObjectEvent)) {
+						jsonObjEventCount++;
+					} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
+						jsonAggEventCount++;
+					}
+				}
+				
 				for (int i = 0; i < eventList.size(); i++) {
 					JsonNode chNode = eventList.get(i);
 					String chNodeStr = chNode.toString();
 					String eventType = chNode.get("type").toString();
-					//context.getLogger().log("-----------chNodeStr = "+chNodeStr);
-					
-					chNodeStr = chNodeStr.replaceAll("tiop:", "");
-					
-					if (eventType.contains(TIOPConstants.ObjectEvent)) {
-						jsonObjEventCount++;
-						chNodeStr = chNodeStr.replaceAll("\"type\":\"ObjectEvent\"", "\"eventType\":\"ObjectEvent\"");
-					} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
-						jsonAggEventCount++;
-						chNodeStr = chNodeStr.replaceAll("\"type\":\"AggregationEvent\"", "\"eventType\":\"AggregationEvent\"");
+					String bill_to_gln = ",\"tiop:psa\":"+tiopbillto_gln;
+					chNodeStr = chNodeStr.substring(0, chNodeStr.length()-1);
+					chNodeStr = chNodeStr + bill_to_gln;
+					String contextStr = ",\"@context\":[{\"tiop\":\"https://ref.opentiop.org/epcis/\"}]";
+					if(!chNodeStr.contains("@context")) {
+						if (eventType.contains(TIOPConstants.ObjectEvent)) {
+							chNodeStr = chNodeStr.replaceAll("\"type\":\"ObjectEvent\"",
+									"\"type\":\"ObjectEvent\"" + contextStr);
+						} else if (eventType.contains(TIOPConstants.AggregationEvent)) {
+							chNodeStr = chNodeStr.replaceAll("\"type\":\"AggregationEvent\"",
+									"\"type\":\"AggregationEvent\"" + contextStr);
+						}
 					}
+					chNodeStr = chNodeStr + "}";
+
 					payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
 					payload.append(chNodeStr+"\n");
 
 				}
+				context.getLogger().log("jsonObjEventCount = " + jsonObjEventCount);
+				context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
 				context.getLogger().log("-----------payload = "+payload.toString());
 					
 				try {
@@ -117,11 +157,20 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			        }
 				    
 				} catch (Exception e) {
+					String message = e.getMessage();
+					context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+message);
+					e.printStackTrace();
+					insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source, destination);
+					Date date = new Date();
+					SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+					String strDate = formatter.format(date);
+					final String htmlBody = "<h4>An issue [EXC011] encountered while processing the file "+fileName+" which was received on "+strDate+".</h4>"
+							+ "<h4>Details of the Issue:</h4>"
+							+ "<p>An error occurred in bulkload while updating tiop dashboard. "+ message+"</p>" 
+							+ "<p>TIOP operation team</p>";
+					TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 					e.printStackTrace();
 				}
-					
-				context.getLogger().log("jsonObjEventCount = " + jsonObjEventCount);
-				context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
 			}
 			
 			if (inputStream != null) inputStream.close();
@@ -129,8 +178,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			context.getLogger().log("BulkLoadLambdaHandler successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'");
 			
 		} catch (Exception e) {
-			context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+e.getMessage());
-			e.printStackTrace();
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
 		} 
 		return "BulkLoadLambda success";
@@ -147,6 +194,82 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
                 .setSSLContext(sslContext)
                 .setSSLHostnameVerifier(NoopHostnameVerifier.INSTANCE)
                 .build();
-    }	
+    }
+	
+	private void insertBulkLoadErrorLog(Context context, String msg, String fileName, int objEventCount, int aggEventCount, String gtinInfo, String source, String destination) {
+		Date date = new Date();
+		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"); // 2024-04-05 20:31:02
+		String strDate = formatter.format(date);
+
+		String query = "INSERT INTO tiopdb.tiop_operation ( event_type_id, source_partner_id, destination_partner_id, source_location_id, destination_location_id, item_id, rule_id, status_id, document_name, object_event_count, aggregation_event_count, exception_detail, create_date, creator_id, last_modified_date, last_modified_by, current_indicator, ods_text)\r\n"
+				+ "VALUES (\r\n"
+				+ "null, -- 1 (Object Event), 2 (Aggregation Event)\r\n"
+				+ "(select distinct stp.partner_id\r\n"
+				+ "from location sl\r\n"
+				+ "inner join trading_partner stp\r\n"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+ source +"'),\r\n"
+				+ "(select distinct  dtp.partner_id\r\n"
+				+ "from location dl\r\n"
+				+ "inner join trading_partner dtp\r\n"
+				+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"+ destination +"'),\r\n"
+				+ "(select distinct sl.location_id\r\n"
+				+ "from location sl\r\n"
+				+ "inner join trading_partner stp\r\n"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+ source +"'),\r\n"
+				+ "(select distinct  dl.location_id\r\n"
+				+ "from location dl\r\n"
+				+ "inner join trading_partner dtp\r\n"
+				+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"+ destination +"'),\r\n"
+				+ "(select distinct ti.item_id\r\n"
+				+ "from trade_item ti where ti.current_indicator='A' and gtin_uri ='"+ gtinInfo +"'),\r\n"
+				+ "(select tr.rule_id from\r\n"
+				+ "tiop_rule tr\r\n"
+				+ "inner join tiop_status ts\r\n"
+				+ "ON tr.status_id = ts.status_id\r\n"
+				+ "inner join location sl\r\n"
+				+ "on tr.source_location_id = sl.location_id\r\n"
+				+ "inner join location dl\r\n"
+				+ "on tr.destination_location_id = dl.location_id\r\n"
+				+ "inner join trade_item ti\r\n"
+				+ "on tr.item_id =ti.item_id\r\n"
+				+ "where\r\n"
+				+ "ts.status_description ='Active'\r\n"
+				+ "and sl.current_indicator ='A'\r\n"
+				+ "and dl.current_indicator ='A'\r\n"
+				+ "and ti.current_indicator ='A'\r\n"
+				+ "and sl.gln_uri = '"+ source +"'\r\n"
+				+ "and dl.gln = '"+ destination +"'\r\n"
+				+ "and ti.gtin_uri ='"+ gtinInfo +"'),\r\n"
+				+ "11, -- bulkload failed --\r\n"
+                + "'"+fileName+"' , -- the json document name\r\n"
+                + objEventCount+ ", -- Object event counts\r\n"
+	            + aggEventCount+ ",  -- Aggregation event counts\r\n"
+	            + "'"+msg+"', -- Exception detail\r\n"
+	            + "'"+strDate+"',\r\n"
+				+ "'tiop_bulkload', -- id that insert data in tiopdb\r\n"
+				+ "'"+strDate+"',\r\n"
+				+ "'tiop_bulkload', -- id that insert data in tiopdb\r\n"
+				+ "'A',\r\n"
+				+ "'');";
+
+		try {
+			context.getLogger().log("insertErrorLog ::: Start");
+			con = getConnection();
+			context.getLogger().log("insertErrorLog ::: con = " + con);
+			Statement stmt = con.createStatement();
+			// context.getLogger().log("insertErrorLog ::: query = "+query);
+			stmt.executeUpdate(query);
+			context.getLogger().log("insertErrorLog ::: query inserted successfully");
+		} catch (Exception e) {
+			context.getLogger().log("insertErrorLog ::: db error = " + e.getMessage());
+		}
+	}
+	
+	private Connection getConnection() throws ClassNotFoundException, SQLException {
+		if (con == null || con.isClosed()) {
+			con = TIOPUtil.getConnection();
+		}
+		return con;
+	}
 	
 }

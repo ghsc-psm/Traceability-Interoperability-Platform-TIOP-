@@ -20,21 +20,21 @@ import com.amazonaws.services.simpleemail.model.SendEmailRequest;
 public class TIOPValidationSendEmail {
 
 	static void sendMail(Context context, int type, Set<String> toEmailSet, String fileName, String message) {
-		context.getLogger().log("TIOPValidationSendEmail::sendMail start - to "+toEmailSet+" --- message = "+message);
+		context.getLogger().log("TIOPValidationSendEmail::sendMail start -- to "+toEmailSet+" --- message = "+message);
 		String expId = "";
 		List<String> toAddress = new ArrayList<String>();
 		
 		if(message.contains("#")) {
 			String arr[] = message.split("#");
 			expId = arr[0];
-			message = arr[2];
+			message = arr[1];
 		}
 		
-		context.getLogger().log("updated - to "+toEmailSet+" --- message = "+message);
+		context.getLogger().log("updated - expId "+expId+" --- message = "+message);
 		
 		if(toEmailSet != null && !toEmailSet.isEmpty()) {
 			for(String emailId : toEmailSet) {
-				toAddress.add(emailId);
+				if(emailId != null) toAddress.add(emailId.trim());
 			}
 		} 
 		
@@ -58,7 +58,6 @@ public class TIOPValidationSendEmail {
 		cDate = c.getTime();
 		String toDate = formatter.format(cDate);
 		
-		context.getLogger().log("For testing purpose memail is ending to "+to+"  -- curDate = "+curDate+"  -- toDate = "+toDate);
 		String FROM = System.getenv(TIOPConstants.fromEmailId);
 		String env = System.getenv(TIOPConstants.env);
 		String SUBJECT = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Your Attention Needed";
@@ -99,7 +98,7 @@ public class TIOPValidationSendEmail {
 				.withSource(FROM);
 		context.getLogger().log("The email send start - to "+toAddress);
 		client.sendEmail(request);
-		context.getLogger().log("Email sent to -- " + toAddress);
+		context.getLogger().log("Email sent completed");
 	}
 
 }

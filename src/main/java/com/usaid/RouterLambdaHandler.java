@@ -143,8 +143,6 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 							message = message.replaceAll("\"", "");
 							context.getLogger().log("final message -- "+message);
 							insertRouterErrorLog(context, message, fileName, objEventCount, aggEventCount, gtinInfo, source, destination);
-							
-							
 							Date date = new Date();
 							SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 							String strDate = formatter.format(date);
@@ -161,6 +159,16 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		        }
 				
 			} catch (Exception e) {
+				String message = e.getMessage();
+				insertRouterErrorLog(context, message, fileName, objEventCount, aggEventCount, gtinInfo, source, destination);
+				Date date = new Date();
+				SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+				String strDate = formatter.format(date);
+				final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "+fileName+" which was received on "+strDate+".</h4>"
+						+ "<h4>Details of the Issue:</h4>"
+						+ "<p>An error occurred while routing the EPCIS document. "+ message+"</p>" 
+						+ "<p>TIOP operation team</p>";
+				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 				e.printStackTrace();
 			}
 		}

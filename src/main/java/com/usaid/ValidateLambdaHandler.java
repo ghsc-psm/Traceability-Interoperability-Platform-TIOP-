@@ -309,13 +309,13 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 					parseObjectEvent(elementEventList, source, destination, gtinInfo, fileName, objEventCount, aggEventCount);
 				} catch (TIOPException e) {
 					context.getLogger().log("----------------------------------- caught TIOPAuthException at parseObjectEvent ");
-					context.getLogger().log("Sending error email and insert error log in db for error = "+e.getMessage());
-					TIOPValidationSendEmail.sendMail(context, 1, getContact(source), fileName, e.getMessage());
 					String msg = e.getMessage();
 					if(msg.contains("#")) {
 						msg = (msg.split("#"))[1];
 					}
 					insertErrorLog(1, msg, source, destination, gtinInfo, fileName, objEventCount, aggEventCount);
+					context.getLogger().log("Sending error email and insert error log in db for error = "+e.getMessage());
+					TIOPValidationSendEmail.sendMail(context, 1, getContact(source), fileName, e.getMessage());
 					throw new TIOPException(msg);
 				}
 				
@@ -323,13 +323,13 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 					parseAggregationEventt(elementEventList, source, destination, gtinInfo, fileName, objEventCount, aggEventCount);
 				} catch (TIOPException e) {
 					context.getLogger().log("----------------------------------- caught TIOPAuthException at parseAggregationEventt ");
-					context.getLogger().log("Sending error email and insert error log in db for error = "+e.getMessage());
-					TIOPValidationSendEmail.sendMail(context, 1, getContact(source), fileName, e.getMessage());
 					String msg = e.getMessage();
 					if(msg.contains("#")) {
 						msg = (msg.split("#"))[1];
 					}
 					insertErrorLog(2, msg, source, destination, gtinInfo, fileName, objEventCount, aggEventCount);
+					context.getLogger().log("Sending error email and insert error log in db for error = "+e.getMessage());
+					TIOPValidationSendEmail.sendMail(context, 1, getContact(source), fileName, e.getMessage());
 					throw new TIOPException(msg);
 				}
 
