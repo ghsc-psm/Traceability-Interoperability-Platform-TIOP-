@@ -9,6 +9,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Objects;
 
 import javax.net.ssl.SSLContext;
 
@@ -35,34 +36,40 @@ import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mysql.cj.util.StringUtils;
 
 public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
 	private Connection con;
+	String processedJsonBucketName = "";
+	String processedXmlBucketName = "";
+	String sourceXmlBucketName = "";
+	String sourceJsonBucketName = "";
+	AmazonS3 s3Client = null;
+	Context context = null;
 
 	@Override
 	public String handleRequest(S3Event s3Event, Context context) {
 		context.getLogger().log("BulkLoadLambdaHandler::handleRequest::Start");
-		String sourceJsonBucketName = "";
+		this.context = context;
+
 		String fileName = "";
 		int jsonObjEventCount = 0;
 		int jsonAggEventCount = 0;
 		String destination = "";
 		String tiopbillto_gln = "";
 		String source = "";
-		String processedJsonBucketName = "";
-		String processedXmlBucketName = "";
-		String sourceXmlBucketName = "";
+		String gtinInfo = "";
 
 		context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Stat");
 		sourceJsonBucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
-		context.getLogger().log("BucketName :: " + sourceJsonBucketName);
-		context.getLogger().log("fileName :: " + fileName);
-		S3Object s3object = null;
+		context.getLogger()
+				.log("BucketName :: " + sourceJsonBucketName + " ::  and fileName " + fileName);
+		S3Object s3Object = null;
 		S3ObjectInputStream inputStream = null;
 		try {
-			AmazonS3 s3Client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
+			s3Client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
 			String env = System.getenv("env");
@@ -76,9 +83,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 							+ processedXmlBucketName);
 
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: env = " + env);
-			s3object = s3Client.getObject(sourceJsonBucketName, fileName);
-			inputStream = s3object.getObjectContent();
-			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: 1");
+			s3Object = s3Client.getObject(sourceJsonBucketName, fileName);
+			inputStream = s3Object.getObjectContent();
 
 			StringBuilder textBuilder = new StringBuilder();
 
@@ -89,8 +95,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			while ((numCharsRead = reader.read(buffer)) != -1) {
 				textBuilder.append(buffer, 0, numCharsRead);
 			}
-			// context.getLogger().log("BulkLoadLambdaHandler::handleRequest::INPUT Json =
-			// "+textBuilder.toString());
 
 			ObjectMapper mapper = new ObjectMapper();
 			mapper.configure(Feature.AUTO_CLOSE_SOURCE, true);
@@ -117,6 +121,13 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 						tiopbillto_gln = chNode.get("tiop:billto_gln").toString();
 						JsonNode sopurceNode = chNode.get("bizLocation");
 						source = sopurceNode.get("id").toString();
+					}
+
+					if (StringUtils.isNullOrEmpty(gtinInfo)) {
+						if (Objects.nonNull(chNode.get("epcList"))) {
+							gtinInfo = extractGtinInfo(chNode.get("epcList"));
+							context.getLogger().log("GtnInfo is " + gtinInfo);
+						}
 					}
 
 					if (eventType.contains(TIOPConstants.ObjectEvent)) {
@@ -173,70 +184,14 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 						context.getLogger().log("Response response -- " + body);
 
 						if (status == 200) {
-
-							try {
-
-								context.getLogger().log(
-										"BulkLoadLambdaHandler successfully uploaded data to repository for the '"
-												+ fileName + "' from s3 bucket '"
-												+ sourceJsonBucketName + "'");
-
-								// copy the json file to processed bucket for json.
-								copyS3Object(context, s3Client, sourceJsonBucketName,
-										processedJsonBucketName, fileName);
-
-								context.getLogger().log(
-										"BulkLoadLambdaHandler - moved the processed json document "
-												+ fileName + " to target bucket "
-												+ processedJsonBucketName);
-
-								s3Client.deleteObject(
-										new DeleteObjectRequest(sourceJsonBucketName, fileName));
-
-								context.getLogger().log(
-										"BulkLoadLambdaHandler - Deleted the processed json document "
-												+ fileName + " from  " + sourceJsonBucketName);
-
-								fileName = fileName.replace(".json", ".xml");
-
-								// copy the xml file to processed bucket for xml.
-								copyS3Object(context, s3Client, sourceXmlBucketName,
-										processedXmlBucketName, fileName);
-
-								context.getLogger().log(
-										"BulkLoadLambdaHandler - moved the processed xml document "
-												+ fileName + " to target bucket "
-												+ processedXmlBucketName);
-
-								s3Client.deleteObject(
-										new DeleteObjectRequest(sourceXmlBucketName, fileName));
-
-								context.getLogger().log(
-										"BulkLoadLambdaHandler - Deleted the processed xml document "
-												+ fileName + " from  " + sourceXmlBucketName);
-
-							} catch (Exception e) {
-								String message = e.getMessage();
-								context.getLogger()
-										.log("BulkLoadLambdaHandler Exception::Exception message : "
-												+ message);
-								e.printStackTrace();
-								insertBulkLoadErrorLog(context, message, fileName,
-										jsonObjEventCount, jsonAggEventCount,
-										"urn:epc:id:sgtin:0000128.239405", source, destination);
-								Date date = new Date();
-								SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
-								String strDate = formatter.format(date);
-								final String htmlBody = "<h4>An issue [EXC011] encountered while performing open search dashboard"
-										+ " repository for processing the file "
-										+ fileName + " which was received on " + strDate + ".t</h4>"
-										+ "<h4>Details of the Issue:</h4>"
-										+ "<p>An error occurred during open search dashboard updates. Though repository update is successful, "
-										+ "but there is a failure while moving the processed files to to a different bucket in S3. "
-										+ message + "</p>" + "<p>TIOP operation team</p>";
-								TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-								
-							}
+							context.getLogger().log(
+									"BulkLoadLambdaHandler successfully uploaded data to repository for the '"
+											+ fileName + "' from s3 bucket '" + sourceJsonBucketName
+											+ "'");
+							
+							//Calling the method to move the files to processed bucket
+							postRepositoryUpdateProcess(jsonObjEventCount, jsonAggEventCount,
+									gtinInfo, source, destination, fileName);
 
 						}
 					}
@@ -247,8 +202,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 							.log("BulkLoadLambdaHandler Exception::Exception message : " + message);
 					e.printStackTrace();
 					insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount,
-							jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source,
-							destination);
+							jsonAggEventCount, gtinInfo, source, destination);
 					Date date = new Date();
 					SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 					String strDate = formatter.format(date);
@@ -258,14 +212,14 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 							+ "<p>An error occurred in bulkload while updating open search dashboard repository. "
 							+ message + "</p>" + "<p>TIOP operation team</p>";
 					TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-					
+
 				}
 			}
 
 			if (inputStream != null)
 				inputStream.close();
-			if (s3object != null)
-				s3object.close();
+			if (s3Object != null)
+				s3Object.close();
 
 		} catch (Exception e) {
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
@@ -273,7 +227,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		return "BulkLoadLambda success";
 	}
 
-	public static CloseableHttpClient createHttpClientWithDisabledSSL() throws Exception {
+	private static CloseableHttpClient createHttpClientWithDisabledSSL() throws Exception {
 		// Create a trust manager that does not validate certificate chains
 		SSLContext sslContext = SSLContextBuilder.create()
 				.loadTrustMaterial((chain, authType) -> true).build();
@@ -347,8 +301,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 	/*
 	 * Method to copy the xml and json document to processed bucket.
 	 */
-	public static void copyS3Object(Context context, AmazonS3 s3Client, String sourceBucket,
-			String destinationBucket, String docName) {
+	private void copyS3Object(String sourceBucket, String destinationBucket, String docName) {
 		try {
 			CopyObjectRequest copyObjectRequest = new CopyObjectRequest(sourceBucket, docName,
 					destinationBucket, docName);
@@ -360,6 +313,69 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			System.err.println(e.getMessage());
 
 		}
+	}
+
+	/*
+	 * Method to extract Gtinfo from epcList
+	 */
+	private String extractGtinInfo(JsonNode epcListNode) {
+
+		if (epcListNode.isArray()) {
+			for (JsonNode epcNode : epcListNode) {
+				return epcNode.asText();
+			}
+		}
+		return "";
+	}
+
+	/*
+	 *  This method helps to move the processed document to a different bucket and
+	 *  delete the same from source bucket.
+	 */
+	private void postRepositoryUpdateProcess(int jsonObjEventCount, int jsonAggEventCount,
+			String gtinInfo, String source, String destination, String fileName) {
+
+		try {
+
+			// copy the json file to processed bucket for json.
+			copyS3Object(sourceJsonBucketName, processedJsonBucketName, fileName);
+			context.getLogger().log("BulkLoadLambdaHandler - moved the processed json document "
+					+ fileName + " to target bucket " + processedJsonBucketName);
+
+			s3Client.deleteObject(new DeleteObjectRequest(sourceJsonBucketName, fileName));
+			context.getLogger().log("BulkLoadLambdaHandler - Deleted the processed json document "
+					+ fileName + " from  " + sourceJsonBucketName);
+
+			fileName = fileName.replace(".json", ".xml");
+			// copy the xml file to processed bucket for xml.
+			copyS3Object(sourceXmlBucketName, processedXmlBucketName, fileName);
+			context.getLogger().log("BulkLoadLambdaHandler - moved the processed xml document "
+					+ fileName + " to target bucket " + processedXmlBucketName);
+
+			s3Client.deleteObject(new DeleteObjectRequest(sourceXmlBucketName, fileName));
+			context.getLogger().log("BulkLoadLambdaHandler - Deleted the processed xml document "
+					+ fileName + " from  " + sourceXmlBucketName);
+
+		} catch (Exception e) {
+			String message = e.getMessage();
+			context.getLogger()
+					.log("BulkLoadLambdaHandler Exception::Exception message : " + message);
+			e.printStackTrace();
+			insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount,
+					gtinInfo, source, destination);
+			Date date = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+			String strDate = formatter.format(date);
+			final String htmlBody = "<h4>An issue [EXC011] encountered while performing open search dashboard"
+					+ " repository for processing the file " + fileName + " which was received on "
+					+ strDate + ".t</h4>" + "<h4>Details of the Issue:</h4>"
+					+ "<p>An error occurred during open search dashboard updates. Though repository update is successful, "
+					+ "but there is a failure while moving the processed files to to a different bucket in S3. "
+					+ message + "</p>" + "<p>TIOP operation team</p>";
+			TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+
+		}
+
 	}
 
 }
