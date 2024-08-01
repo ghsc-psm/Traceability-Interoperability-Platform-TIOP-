@@ -27,6 +27,9 @@ import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.S3Event;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.CopyObjectRequest;
+import com.amazonaws.services.s3.model.CopyObjectResult;
+import com.amazonaws.services.s3.model.DeleteObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonParser.Feature;
@@ -40,29 +43,38 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 	@Override
 	public String handleRequest(S3Event s3Event, Context context) {
 		context.getLogger().log("BulkLoadLambdaHandler::handleRequest::Start");
-		String bucketName = "";
+		String sourceJsonBucketName = "";
 		String fileName = "";
 		int jsonObjEventCount = 0;
 		int jsonAggEventCount = 0;
 		String destination = "";
 		String tiopbillto_gln = "";
 		String source = "";
+		String processedJsonBucketName = "";
+		String processedXmlBucketName = "";
+		String sourceXmlBucketName = "";
 		
 		
 	    context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Stat");
-		bucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
+		sourceJsonBucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
-		context.getLogger().log("BucketName :: " + bucketName);
+		context.getLogger().log("BucketName :: " + sourceJsonBucketName);
 		context.getLogger().log("fileName :: " + fileName);
 		S3Object s3object = null;
 		S3ObjectInputStream inputStream = null;
 		try {
-			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
+			AmazonS3 s3Client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
 			String env = System.getenv("env");
+			processedJsonBucketName = System.getenv("processedJsonBucketName");
+			processedXmlBucketName = System.getenv("processedXmlBucketName");
+			sourceXmlBucketName = System.getenv("sourceXmlBucketName");
+			
+			context.getLogger().log("BulkLoadLambdaHandler -> processedJsonBucketName "+processedJsonBucketName +" processedXmlBucketName "+processedXmlBucketName);
+			
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: env = "+env);
-			s3object = s3client.getObject(bucketName, fileName);
+			s3object = s3Client.getObject(sourceJsonBucketName, fileName);
 			inputStream = s3object.getObjectContent();
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: 1");
 			
@@ -154,6 +166,32 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
 					    context.getLogger().log("Response status-- "+status);
 					    context.getLogger().log("Response response -- "+body);
+					    
+					    if(status == 200) {
+					    	
+					    	context.getLogger().log("BulkLoadLambdaHandler successfully uploaded data to repository for the '" + fileName + "' from s3 bucket '" + sourceJsonBucketName + "'");
+					    	
+					    	 //copy the json file to processed bucket for json.
+							 copyS3Object(context, s3Client, sourceJsonBucketName, processedJsonBucketName, fileName);
+							 
+							 context.getLogger().log("BulkLoadLambdaHandler - moved the processed json document "+ fileName +" to target bucket " +processedJsonBucketName);
+							 
+							 s3Client.deleteObject(new DeleteObjectRequest(sourceJsonBucketName, fileName));
+							 
+							 context.getLogger().log("BulkLoadLambdaHandler - Deleted the processed json document "+ fileName +" from  " +sourceJsonBucketName);
+							 
+							 fileName = fileName.replace(".json", ".xml");
+							 
+							//copy the xml file to processed bucket for xml.
+							 copyS3Object(context, s3Client, sourceXmlBucketName, processedXmlBucketName, fileName);
+							 
+							 context.getLogger().log("BulkLoadLambdaHandler - moved the processed xml document "+ fileName +" to target bucket " +processedXmlBucketName);
+							 
+							 s3Client.deleteObject(new DeleteObjectRequest(sourceXmlBucketName, fileName));
+							 
+							 context.getLogger().log("BulkLoadLambdaHandler - Deleted the processed xml document "+ fileName +" from  " +sourceXmlBucketName);
+					    	
+					    }
 			        }
 				    
 				} catch (Exception e) {
@@ -175,7 +213,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			
 			if (inputStream != null) inputStream.close();
 			if (s3object != null) s3object.close();
-			context.getLogger().log("BulkLoadLambdaHandler successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'");
+			
 			
 		} catch (Exception e) {
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
@@ -270,6 +308,24 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			con = TIOPUtil.getConnection();
 		}
 		return con;
+	}
+	
+	/*
+	 * Method to copy the xml and json document to processed bucket.
+	 */
+	public static void copyS3Object(Context context, AmazonS3 s3Client, String sourceBucket, String destinationBucket,
+			String docName) {
+		try {
+			CopyObjectRequest copyObjectRequest = new CopyObjectRequest(sourceBucket, docName,
+					destinationBucket, docName);
+
+			CopyObjectResult copyObjectResult = s3Client.copyObject(copyObjectRequest);
+			context.getLogger().log("Copy succeeded: " + copyObjectResult.getETag());
+
+		} catch (Exception e) {
+			System.err.println(e.getMessage());
+			
+		}
 	}
 	
 }
