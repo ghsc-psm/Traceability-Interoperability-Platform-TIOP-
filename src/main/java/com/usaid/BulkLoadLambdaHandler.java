@@ -4,12 +4,18 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 
 import javax.mail.Message;
 import javax.mail.MessagingException;
@@ -57,7 +63,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		String source = "";
 		
 		
-	    context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Stat");
+	    context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
 		bucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
 		context.getLogger().log("BucketName :: " + bucketName);
@@ -67,7 +73,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		try {
 			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
 					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
-			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
 			String env = System.getenv("env");
 			context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: env = "+env);
 			s3object = s3client.getObject(bucketName, fileName);
@@ -118,6 +123,12 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					}
 				}
 				
+//				context.getLogger().log("destination = " + destination);
+//				context.getLogger().log("source = " + source);
+				
+				Set<String> hashSet = getHashFromDB(context);
+				context.getLogger().log("no of hash from db = " + hashSet.size());
+				Set<String> insertHash = new HashSet<String>();
 				for (int i = 0; i < eventList.size(); i++) {
 					JsonNode chNode = eventList.get(i);
 					String chNodeStr = chNode.toString();
@@ -135,48 +146,74 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 									"\"type\":\"AggregationEvent\"" + contextStr);
 						}
 					}
-					chNodeStr = chNodeStr + "}";
-
-					payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
-					payload.append(chNodeStr+"\n");
-
+					chNodeStr = chNodeStr + "}\n";
+					
+					String eventStr = chNode.toString();
+					eventStr = eventStr.replaceAll(" ", "");
+					
+					MessageDigest messageDigest;
+					try {
+						messageDigest = MessageDigest.getInstance("SHA-256");
+						messageDigest.update(eventStr.getBytes());
+						String eventHash = new String(messageDigest.digest());
+						//context.getLogger().log("eventHash = "+eventHash);
+						if(!hashSet.contains(eventHash)) {
+							//context.getLogger().log("not match eventHash = "+eventHash);
+							insertHash.add(eventHash);
+							payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
+							payload.append(chNodeStr);
+						} 
+					} catch (NoSuchAlgorithmException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
 				context.getLogger().log("jsonObjEventCount = " + jsonObjEventCount);
 				context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
-				context.getLogger().log("-----------payload = "+payload.toString());
-					
-				try {
-					String blSecret = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.blSecretName));
-			        String apiURL = TIOPUtil.getKeyValue(blSecret, "apiURL");
-			        String authToken = TIOPUtil.getKeyValue(blSecret, "authToken");
-					CloseableHttpClient httpClient = createHttpClientWithDisabledSSL();
-					HttpPost request = new HttpPost(apiURL);
-			        StringEntity se = new StringEntity(payload.toString()); 
-			        request.setHeader("Content-Type", "application/json");
-			        request.setHeader("Authorization", authToken);
-			        request.setEntity(se);
-			        
-			        try (CloseableHttpResponse response = httpClient.execute(request)) {
-			        	int status = response.getStatusLine().getStatusCode();
-					    String body = new String(response.getEntity().getContent().readAllBytes());
+				context.getLogger().log("No of unique event = "+insertHash.size());
+				
+				if(payload != null && payload.length() > 0) {
+					context.getLogger().log("-----------payload = "+payload.toString());
+					try {
+						String blSecret = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.blSecretName));
+				        String apiURL = TIOPUtil.getKeyValue(blSecret, "apiURL");
+				        String authToken = TIOPUtil.getKeyValue(blSecret, "authToken");
+						CloseableHttpClient httpClient = createHttpClientWithDisabledSSL();
+						HttpPost request = new HttpPost(apiURL);
+				        StringEntity se = new StringEntity(payload.toString()); 
+				        request.setHeader("Content-Type", "application/json");
+				        request.setHeader("Authorization", authToken);
+				        request.setEntity(se);
+				        
+				        try (CloseableHttpResponse response = httpClient.execute(request)) {
+				        	int status = response.getStatusLine().getStatusCode();
+						    String body = new String(response.getEntity().getContent().readAllBytes());
 
-					    context.getLogger().log("Response status-- "+status);
-					    context.getLogger().log("Response response -- "+body);
-			        }
-				} catch (Exception e) {
-					String message = e.getMessage();
-					context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+message);
-					insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source, destination);
-					Date date = new Date();
-					SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
-					String strDate = formatter.format(date);
-					final String htmlBody = "<h4>An issue [EXC011] encountered while processing the file "+fileName+" which was received on "+strDate+".</h4>"
-							+ "<h4>Details of the Issue:</h4>"
-							+ "<p>An error occurred in bulkload while updating tiop dashboard. "+ message+"</p>" 
-							+ "<p>TIOP operation team</p>";
-					sendMail(context, fileName, htmlBody);
-					e.printStackTrace();
+						    context.getLogger().log("Response status-- "+status);
+						    context.getLogger().log("Response response -- "+body);
+						    if(status == 200) insertHashData(context, insertHash);
+				        }
+				        
+				        
+					} catch (Exception e) {
+						String message = e.getMessage();
+						context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+message);
+						insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source, destination);
+						Date date = new Date();
+						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+						String strDate = formatter.format(date);
+						final String htmlBody = "<h4>An issue [EXC011] encountered while processing the file "+fileName+" which was received on "+strDate+".</h4>"
+								+ "<h4>Details of the Issue:</h4>"
+								+ "<p>An error occurred in bulkload while updating tiop dashboard. "+ message+"</p>" 
+								+ "<p>TIOP operation team</p>";
+						sendMail(context, fileName, htmlBody);
+						e.printStackTrace();
+					}
+				} else {
+					context.getLogger().log("All the events are duplicate");
 				}
+					
+
 			}
 			
 			if (inputStream != null) inputStream.close();
@@ -187,6 +224,45 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
 		} 
 		return "BulkLoadLambda success";
+	}
+
+	private void insertHashData(Context context, Set<String> insertHash) throws ClassNotFoundException, SQLException {
+		Date date = new Date();
+		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"); // 2024-04-05 20:31:02
+		String strDate = formatter.format(date);
+		con = getConnection();
+		PreparedStatement ps = con.prepareStatement("INSERT INTO tiopdb.event_hash(hash, create_date) VALUES(?, ?);");
+
+		for (String data : insertHash) {
+			ps.setString(1, String.valueOf(data));
+			ps.setString(2, strDate);
+			ps.addBatch();
+		}
+		ps.clearParameters();
+		int[] results = ps.executeBatch();
+		context.getLogger().log("Inserted hash data count = " + results.length);
+	}
+	
+	private  Set<String> getHashFromDB(Context context) {
+		//context.getLogger().log("rdsDbTeat ::: Start");
+	    Set<String> hashSet = new HashSet<String>();
+		String query = "SELECT hash FROM tiopdb.event_hash;";
+		int count = 0;
+		try {
+			con = getConnection();
+			Statement stmt = con.createStatement();
+			ResultSet rs = stmt.executeQuery(query);
+			while (rs.next()) {
+				if(rs.getString(1) != null) hashSet.add(rs.getString(1));
+				count++;
+			}
+			//context.getLogger().log("getHashFromDB ::: count = " + count);
+			
+		} catch (Exception e) {
+			context.getLogger().log("getHashFromDB ::: db error = " + e.getMessage());
+		}
+		
+		return hashSet;
 	}
 	
 	private void sendMail(Context context, String fileName, final String htmlBody) {
