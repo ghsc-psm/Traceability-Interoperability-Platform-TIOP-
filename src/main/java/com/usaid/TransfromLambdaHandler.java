@@ -116,6 +116,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				connection.setRequestMethod("POST");
 				// Set request headers
 				connection.setRequestProperty("Content-Type", "application/xml; utf-8");
+				connection.setRequestProperty("GS1-EPC-Format", "Always_GS1_Digital_Link");
 				// connection.setRequestProperty("Accept", "application/xml");
 				connection.setDoOutput(true);
 				connection.setConnectTimeout(900000);
@@ -312,9 +313,9 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			// Create a default MimeMessage object
 			Message message = new MimeMessage(session);
 			// Set From: header field
-			message.setFrom(new InternetAddress(System.getenv(TIOPConstants.toEmailId)));
+			message.setFrom(new InternetAddress(System.getenv(TIOPConstants.fromEmailId)));
 			// Set To: header field
-			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(System.getenv(TIOPConstants.fromEmailId)));
+			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(System.getenv(TIOPConstants.toEmailId)));
 			// Set Subject: header field
 			message.setSubject(subject);
 			// Set the actual message

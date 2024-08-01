@@ -9,7 +9,15 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Properties;
 
+import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.PasswordAuthentication;
+import javax.mail.Session;
+import javax.mail.Transport;
+import javax.mail.internet.InternetAddress;
+import javax.mail.internet.MimeMessage;
 import javax.net.ssl.SSLContext;
 
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -155,11 +163,9 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					    context.getLogger().log("Response status-- "+status);
 					    context.getLogger().log("Response response -- "+body);
 			        }
-				    
 				} catch (Exception e) {
 					String message = e.getMessage();
 					context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+message);
-					e.printStackTrace();
 					insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source, destination);
 					Date date = new Date();
 					SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
@@ -168,7 +174,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 							+ "<h4>Details of the Issue:</h4>"
 							+ "<p>An error occurred in bulkload while updating tiop dashboard. "+ message+"</p>" 
 							+ "<p>TIOP operation team</p>";
-					TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+					sendMail(context, fileName, htmlBody);
 					e.printStackTrace();
 				}
 			}
@@ -181,6 +187,49 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
 		} 
 		return "BulkLoadLambda success";
+	}
+	
+	private void sendMail(Context context, String fileName, final String htmlBody) {
+		String smtpSecret = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.smtpSecretName));
+		String smtpHost = TIOPUtil.getKeyValue(smtpSecret, "smtpHost");
+		String username = TIOPUtil.getKeyValue(smtpSecret, "smtpUser");
+		String password = TIOPUtil.getKeyValue(smtpSecret, "smtpPassword");
+		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtpPort");
+		
+		String env = System.getenv(TIOPConstants.env);
+		final String subject = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Attention Needed";
+		// Set up the SMTP server properties
+		Properties props = new Properties();
+		props.put("mail.smtp.auth", "true");
+		props.put("mail.smtp.starttls.enable", "true");
+		props.put("mail.smtp.host", smtpHost); // SMTP server address
+		props.put("mail.smtp.port", smtPort);
+		props.put("mail.smtp.ssl.trust", smtpHost);
+		props.put("mail.smtp.ssl.protocols", "TLSv1.2");
+		// Get the Session object
+		Session session = Session.getInstance(props, new javax.mail.Authenticator() {
+			protected PasswordAuthentication getPasswordAuthentication() {
+				return new PasswordAuthentication(username, password);
+			}
+		});
+
+		try {
+			// Create a default MimeMessage object
+			Message message = new MimeMessage(session);
+			// Set From: header field
+			message.setFrom(new InternetAddress(System.getenv(TIOPConstants.fromEmailId)));
+			// Set To: header field
+			message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(System.getenv(TIOPConstants.toEmailId)));
+			// Set Subject: header field
+			message.setSubject(subject);
+			// Set the actual message
+			message.setContent(htmlBody, "text/html");
+			// Send message
+			Transport.send(message);
+			// sendemail-send");
+		} catch (MessagingException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public static CloseableHttpClient createHttpClientWithDisabledSSL() throws Exception {
