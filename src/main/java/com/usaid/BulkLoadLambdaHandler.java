@@ -61,6 +61,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		String destination = "";
 		String tiopbillto_gln = "";
 		String source = "";
+		String gtin = "";
 		
 		
 	    context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
@@ -98,11 +99,11 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			
 			if (epcisBody != null) {
 				JsonNode eventList = epcisBody.get("eventList");
-				jsonObjEventCount = 0;
-				jsonAggEventCount = 0;
-				destination = "";
-				tiopbillto_gln = "";
-				source = "";
+//				jsonObjEventCount = 0;
+//				jsonAggEventCount = 0;
+//				destination = "";
+//				tiopbillto_gln = "";
+//				source = "";
 				StringBuilder payload = new StringBuilder();
 				
 				for (int i = 0; i < eventList.size(); i++) {
@@ -111,9 +112,22 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					String bizStep = chNode.get("bizStep").toString();
 					if(bizStep.contains("shipping")) {
 						destination = chNode.get("tiop:nts_gln").toString();
+						if(!destination.isEmpty()) destination = destination.replaceAll("\"", "");
 						tiopbillto_gln = chNode.get("tiop:billto_gln").toString();
 						JsonNode sopurceNode = chNode.get("bizLocation");
 						source = sopurceNode.get("id").toString();
+						if(source != null) source = source.substring(source.length() -14, source.length()-1);
+						context.getLogger().log("-----------destination = "+destination);
+						context.getLogger().log("-----------source = "+source);
+					} else if(gtin.isEmpty()){
+						JsonNode epcList = chNode.get("epcList");
+						if(epcList !=null) {
+							gtin = epcList.get(0).toString();
+							gtin = gtin.split("https://id.gs1.org/")[1];
+							//System.out.println("----------->>gtin = "+gtin);
+							gtin = gtin.substring(3, 17);
+							context.getLogger().log("-----------gtin = "+gtin);
+						}
 					}
 					
 					if (eventType.contains(TIOPConstants.ObjectEvent)) {
@@ -123,11 +137,12 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					}
 				}
 				
-//				context.getLogger().log("destination = " + destination);
-//				context.getLogger().log("source = " + source);
+				context.getLogger().log("destination = " + destination);
+				context.getLogger().log("source = " + source);
+				context.getLogger().log("gtin = "+gtin);
 				
 				Set<String> hashSet = getHashFromDB(context);
-				context.getLogger().log("no of hash from db = " + hashSet.size());
+				context.getLogger().log("Total Hash from db = " + hashSet.size());
 				Set<String> insertHash = new HashSet<String>();
 				for (int i = 0; i < eventList.size(); i++) {
 					JsonNode chNode = eventList.get(i);
@@ -172,6 +187,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
 				context.getLogger().log("No of unique event = "+insertHash.size());
 				
+				insertBulkLoadErrorLog(context, "Test", fileName, jsonObjEventCount, jsonAggEventCount, gtin, source, destination);
+				
 				if(payload != null && payload.length() > 0) {
 					context.getLogger().log("-----------payload = "+payload.toString());
 					try {
@@ -198,7 +215,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					} catch (Exception e) {
 						String message = e.getMessage();
 						context.getLogger().log("BulkLoadLambdaHandler Exception::Exception message : "+message);
-						insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, "urn:epc:id:sgtin:0000128.239405", source, destination);
+						insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount, jsonAggEventCount, gtin, source, destination);
 						Date date = new Date();
 						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 						String strDate = formatter.format(date);
@@ -325,14 +342,14 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		Date date = new Date();
 		SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"); // 2024-04-05 20:31:02
 		String strDate = formatter.format(date);
-
+	
 		String query = "INSERT INTO tiopdb.tiop_operation ( event_type_id, source_partner_id, destination_partner_id, source_location_id, destination_location_id, item_id, rule_id, status_id, document_name, object_event_count, aggregation_event_count, exception_detail, create_date, creator_id, last_modified_date, last_modified_by, current_indicator, ods_text)\r\n"
 				+ "VALUES (\r\n"
 				+ "null, -- 1 (Object Event), 2 (Aggregation Event)\r\n"
 				+ "(select distinct stp.partner_id\r\n"
 				+ "from location sl\r\n"
 				+ "inner join trading_partner stp\r\n"
-				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+ source +"'),\r\n"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln ='"+ source +"'),\r\n"
 				+ "(select distinct  dtp.partner_id\r\n"
 				+ "from location dl\r\n"
 				+ "inner join trading_partner dtp\r\n"
@@ -340,13 +357,13 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				+ "(select distinct sl.location_id\r\n"
 				+ "from location sl\r\n"
 				+ "inner join trading_partner stp\r\n"
-				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"+ source +"'),\r\n"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln ='"+ source +"'),\r\n"
 				+ "(select distinct  dl.location_id\r\n"
 				+ "from location dl\r\n"
 				+ "inner join trading_partner dtp\r\n"
 				+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"+ destination +"'),\r\n"
 				+ "(select distinct ti.item_id\r\n"
-				+ "from trade_item ti where ti.current_indicator='A' and gtin_uri ='"+ gtinInfo +"'),\r\n"
+				+ "from trade_item ti where ti.current_indicator='A' and gtin = '"+ gtinInfo +"'),\r\n"
 				+ "(select tr.rule_id from\r\n"
 				+ "tiop_rule tr\r\n"
 				+ "inner join tiop_status ts\r\n"
@@ -362,11 +379,11 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				+ "and sl.current_indicator ='A'\r\n"
 				+ "and dl.current_indicator ='A'\r\n"
 				+ "and ti.current_indicator ='A'\r\n"
-				+ "and sl.gln_uri = '"+ source +"'\r\n"
+				+ "and sl.gln = '"+ source +"'\r\n"
 				+ "and dl.gln = '"+ destination +"'\r\n"
-				+ "and ti.gtin_uri ='"+ gtinInfo +"'),\r\n"
+				+ "and ti.gtin ='"+ gtinInfo +"'),\r\n"
 				+ "11, -- bulkload failed --\r\n"
-                + "'"+fileName+"' , -- the json document name\r\n"
+				+ "'"+fileName+"' , -- the json document name\r\n"
                 + objEventCount+ ", -- Object event counts\r\n"
 	            + aggEventCount+ ",  -- Aggregation event counts\r\n"
 	            + "'"+msg+"', -- Exception detail\r\n"
