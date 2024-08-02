@@ -49,6 +49,9 @@ public class AuthLambdaHandler implements RequestHandler<S3Event, String> {
 		bucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
 		context.getLogger().log("BucketName :: " + bucketName);
+		if(fileName.contains("+")) fileName = fileName.replace("+", " ");
+		if(fileName.contains("%28")) fileName = fileName.replaceAll("%28", "(");
+		if(fileName.contains("%29")) fileName = fileName.replaceAll("%29", ")");
 		context.getLogger().log("fileName :: " + fileName);
 		S3Object s3object = null;
 		S3ObjectInputStream inputStream = null;
