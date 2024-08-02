@@ -406,32 +406,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		return source;
 	}
 	
-	public static void main (String args[]) {
-		
-		BulkLoadLambdaHandler handler = new BulkLoadLambdaHandler();
-		
-		String jsonString = "{ \"childEPCs\": ["
-                + "\"https://id.gs1.org/01/20000128394054/31/1\","
-                + "\"https://id.gs1.org/01/20000128394054/41/2\","
-                + "\"https://id.gs1.org/01/20000128394054/51/3\","
-                + "\"https://id.gs1.org/01/20000128394054/61/4\","
-                + "\"https://id.gs1.org/01/20000128394054/71/5\""
-                + "] }";
-		
-		  // Create ObjectMapper instance
-        ObjectMapper mapper = new ObjectMapper();
 
-        // Parse JSON string into JsonNode
-        JsonNode jsonNode = null;
-		try {
-			jsonNode = mapper.readTree(jsonString);
-		} catch (JsonProcessingException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-        		
-		handler.extractGtinInfo(jsonNode.get("childEPCs"));
-		
-	}
 
 }
