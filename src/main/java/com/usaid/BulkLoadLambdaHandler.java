@@ -10,6 +10,8 @@ import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.net.ssl.SSLContext;
 
@@ -34,6 +36,7 @@ import com.amazonaws.services.s3.model.DeleteObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonParser.Feature;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mysql.cj.util.StringUtils;
@@ -119,8 +122,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					if (bizStep.contains("shipping")) {
 						destination = chNode.get("tiop:nts_gln").toString();
 						tiopbillto_gln = chNode.get("tiop:billto_gln").toString();
-						JsonNode sopurceNode = chNode.get("bizLocation");
-						source = sopurceNode.get("id").toString();
+						JsonNode sourceNode = chNode.get("bizLocation"); 
+						source = getSource(sourceNode.get("id").toString());
 					}
 
 					if (StringUtils.isNullOrEmpty(gtinInfo)) {
@@ -249,18 +252,18 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				+ "VALUES (\r\n" + "null, -- 1 (Object Event), 2 (Aggregation Event)\r\n"
 				+ "(select distinct stp.partner_id\r\n" + "from location sl\r\n"
 				+ "inner join trading_partner stp\r\n"
-				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln ='"
 				+ source + "'),\r\n" + "(select distinct  dtp.partner_id\r\n"
 				+ "from location dl\r\n" + "inner join trading_partner dtp\r\n"
 				+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"
 				+ destination + "'),\r\n" + "(select distinct sl.location_id\r\n"
 				+ "from location sl\r\n" + "inner join trading_partner stp\r\n"
-				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln_uri ='"
+				+ "on sl.partner_id =stp.partner_id where sl.current_indicator ='A' and stp.current_indicator ='A' and gln ='"
 				+ source + "'),\r\n" + "(select distinct  dl.location_id\r\n"
 				+ "from location dl\r\n" + "inner join trading_partner dtp\r\n"
 				+ "on dl.partner_id =dtp.partner_id where dl.current_indicator='A' and dtp.current_indicator ='A' and gln ='"
 				+ destination + "'),\r\n" + "(select distinct ti.item_id\r\n"
-				+ "from trade_item ti where ti.current_indicator='A' and gtin_uri ='" + gtinInfo
+				+ "from trade_item ti where ti.current_indicator='A' and gtin ='" + gtinInfo
 				+ "'),\r\n" + "(select tr.rule_id from\r\n" + "tiop_rule tr\r\n"
 				+ "inner join tiop_status ts\r\n" + "ON tr.status_id = ts.status_id\r\n"
 				+ "inner join location sl\r\n" + "on tr.source_location_id = sl.location_id\r\n"
@@ -316,15 +319,28 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 	}
 
 	/*
-	 * Method to extract Gtinfo from epcList
+	 * Method to extract Gtin from epcList
 	 */
 	private String extractGtinInfo(JsonNode epcListNode) {
-
+        
+		String epcNodeText = "";
+		 String regex = "https://id.gs1.org/01/(\\d+)/\\d+/";
+		 
 		if (epcListNode.isArray()) {
 			for (JsonNode epcNode : epcListNode) {
-				return epcNode.asText();
+				epcNodeText = epcNode.asText();
+				if(!StringUtils.isNullOrEmpty(epcNodeText))
+					break;
 			}
 		}
+		
+		Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(epcNodeText);
+
+        if (matcher.find()) {
+            String extractedValue = matcher.group(1);
+           return extractedValue;
+        }
 		return "";
 	}
 
@@ -376,6 +392,46 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
 		}
 
+	}
+	
+	private String getSource(String sourceNodeValue) {
+		
+		String source = "";
+		if(!StringUtils.isNullOrEmpty(sourceNodeValue) && sourceNodeValue.lastIndexOf('/') >0){
+			
+			source = sourceNodeValue.substring(sourceNodeValue.lastIndexOf('/'));
+			
+		}
+		
+		return source;
+	}
+	
+	public static void main (String args[]) {
+		
+		BulkLoadLambdaHandler handler = new BulkLoadLambdaHandler();
+		
+		String jsonString = "{ \"childEPCs\": ["
+                + "\"https://id.gs1.org/01/20000128394054/31/1\","
+                + "\"https://id.gs1.org/01/20000128394054/41/2\","
+                + "\"https://id.gs1.org/01/20000128394054/51/3\","
+                + "\"https://id.gs1.org/01/20000128394054/61/4\","
+                + "\"https://id.gs1.org/01/20000128394054/71/5\""
+                + "] }";
+		
+		  // Create ObjectMapper instance
+        ObjectMapper mapper = new ObjectMapper();
+
+        // Parse JSON string into JsonNode
+        JsonNode jsonNode = null;
+		try {
+			jsonNode = mapper.readTree(jsonString);
+		} catch (JsonProcessingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        		
+		handler.extractGtinInfo(jsonNode.get("childEPCs"));
+		
 	}
 
 }
