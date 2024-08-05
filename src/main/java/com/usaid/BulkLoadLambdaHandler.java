@@ -272,7 +272,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 										+ "<h4>Details of the Issue:</h4>"
 										+ "<p>An error occurred in bulkload while updating Open Search Dashboard Repository. "
 										+ message + "</p>" + "<p>TIOP operation team</p>";
-								sendMail(context, fileName, htmlBody);
+							//	sendMail(context, fileName, htmlBody);
+								TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 								
 
 							}
@@ -292,7 +293,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 								+ "<h4>Details of the Issue:</h4>"
 								+ "<p>An error occurred in bulkload while updating Open Search Dashboard Repository. "
 								+ message + "</p>" + "<p>TIOP operation team</p>";
-						sendMail(context, fileName, htmlBody);
+						//sendMail(context, fileName, htmlBody);
+						TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 						e.printStackTrace();
 					}
 				} else {
@@ -531,6 +533,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					+ "<p>An error occurred during open search dashboard updates. Though repository update is successful, "
 					+ "but there is a failure while moving the processed files to to a different bucket in S3. "
 					+ message + "</p>" + "<p>TIOP operation team</p>";
+			context.getLogger()
+			.log("BulkLoadLambdaHandler Send mail trigger start ");
 			TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 
 		}

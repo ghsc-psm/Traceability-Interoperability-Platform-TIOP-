@@ -193,8 +193,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 								+ "<p>TIOP operation team</p>";
 						insertTransformationErrorLog(context, detailMsg, fileName, objEventCount, aggEventCount,
 								gtinInfo, source, destination);
-						// TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-						sendMail(fileName, htmlBody);
+						TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+						//sendMail(fileName, htmlBody);
 						return "XML and JSON Event conts are different.";
 					}
 
@@ -240,7 +240,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 							+ "<p>TIOP operation team</p>";
 					insertTransformationErrorLog(context, detail.toString(), fileName, objEventCount, aggEventCount, gtinInfo,
 							source, destination);
-					sendMail(fileName, htmlBody);
+					//sendMail(fileName, htmlBody);
+					TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 					context.getLogger().log("-------TransfromLambdaHandler::9.20-----------");
 					return errorCode + " response from Document Conversion API";
 
