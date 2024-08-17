@@ -264,8 +264,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 						+ " which was received on " + strDate + ".</h4>" + "<h4>Details of the Issue:</h4>" + "<p>"
 						+ e.getMessage() + "</p>" + "<p>TIOP operation team</p>";
 				insertTransformationErrorLog(context, e.getMessage(), fileName, objEventCount, aggEventCount, gtinInfo,	source, destination);
-				// TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-				sendMail(fileName, htmlBody);
+				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+				//sendMail(fileName, htmlBody);
 			}
 
 		} finally {
