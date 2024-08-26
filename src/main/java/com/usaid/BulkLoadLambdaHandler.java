@@ -12,23 +12,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 
 import java.util.HashSet;
-import java.util.Properties;
+import java.util.LinkedHashSet;
+import java.util.List;
+
 import java.util.Set;
-
-import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.mail.Message;
-import javax.mail.MessagingException;
-import javax.mail.PasswordAuthentication;
-import javax.mail.Session;
-import javax.mail.Transport;
-import javax.mail.internet.InternetAddress;
-import javax.mail.internet.MimeMessage;
 import javax.net.ssl.SSLContext;
 
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -52,10 +43,8 @@ import com.amazonaws.services.s3.model.DeleteObjectRequest;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonParser.Feature;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mysql.cj.util.StringUtils;
 
 public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
@@ -81,7 +70,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 
 		String gtin = "";
 
-		context.getLogger().log("BulkLoadLambdaHandler::handleRequest ::: Start");
 		sourceJsonBucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
@@ -161,9 +149,9 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 					}
 				}
 
-				Set<String> hashSet = getHashFromDB(context);
-				context.getLogger().log("Total Hash from db = " + hashSet.size());
-				Set<String> insertHash = new HashSet<String>();
+				Set<String> dbHashValueList = getHashFromDB(context);
+				context.getLogger().log("Total Hash from db = " + dbHashValueList.size());
+				Set<String> newHashValueSet = new LinkedHashSet<String>();
 
 				for (int i = 0; i < eventList.size(); i++) {
 					JsonNode chNode = eventList.get(i);
@@ -194,8 +182,8 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 						messageDigest.update(eventStr.getBytes());
 						String eventHash = new String(messageDigest.digest());
 
-						if (!hashSet.contains(eventHash)) {
-							insertHash.add(eventHash);
+						if (!dbHashValueList.contains(eventHash)) {
+							newHashValueSet.add(eventHash);
 							payload.append("{\"index\": {\"_index\": \"epcis_index\"}}\n");
 							payload.append(chNodeStr);
 						}
@@ -205,12 +193,10 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				}
 				context.getLogger().log("jsonObjEventCount = " + jsonObjEventCount);
 				context.getLogger().log("jsonAggEventCount = " + jsonAggEventCount);
-				context.getLogger().log("No of unique event = " + insertHash.size());
-				
-
+				context.getLogger().log("No of unique event = " + dbHashValueList.size());
 
 				if (payload != null && payload.length() > 0) {
-					context.getLogger().log("-----------payload = " + payload.toString());
+					context.getLogger().log("-----------payload for bulkupload = " + payload.toString());
 
 					try {
 						String blSecret = TIOPUtil
@@ -237,17 +223,23 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 										"BulkLoadLambdaHandler successfully uploaded data to repository for the '"
 												+ fileName + "' from s3 bucket '"
 												+ sourceJsonBucketName + "'");
+
+								context.getLogger().log("Executing the method to remove any failed hash values before inserting to DB");
+								removeFailedRecordHash(message, newHashValueSet);
 								
-								insertHashData(context, insertHash);
+								context.getLogger().log("Inserting hash values to database.");
+								if(newHashValueSet !=null && newHashValueSet.size() >0) {
+									insertHashData(context, newHashValueSet);
+								}
 
 								// Calling the method to move the files to processed bucket
 								postRepositoryUpdateProcess(jsonObjEventCount, jsonAggEventCount,
 										gtin, source, destination, fileName);
 							} else {
-								
+
 								ObjectMapper mapperObj = new ObjectMapper();
 								JsonNode bodyNode = mapperObj.readTree(message);
-								
+
 								JsonNode messageNode = bodyNode.get("message");
 								if (messageNode == null) {
 									messageNode = bodyNode.get("error");
@@ -258,23 +250,25 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 								} else {
 									message = messageNode.toString();
 								}
-															
-								context.getLogger().log(
-										"BulkLoadLambdaHandler Exception::Exception message: " + message);
-								insertBulkLoadErrorLog(context, message, fileName, jsonObjEventCount,
-										jsonAggEventCount, gtin, source, destination);
-								
+
+								context.getLogger()
+										.log("BulkLoadLambdaHandler Exception::Exception message: "
+												+ message);
+								insertBulkLoadErrorLog(context, message, fileName,
+										jsonObjEventCount, jsonAggEventCount, gtin, source,
+										destination);
+
 								Date date = new Date();
 								SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 								String strDate = formatter.format(date);
 								final String htmlBody = "<h4>An issue [EXC012] encountered while processing the file "
-										+ fileName + " which was received on " + strDate + " to Open Search Dashboard repository.</h4>"
+										+ fileName + " which was received on " + strDate
+										+ " to Open Search Dashboard repository.</h4>"
 										+ "<h4>Details of the Issue:</h4>"
 										+ "<p>An error occurred in bulkload while updating Open Search Dashboard Repository. "
 										+ message + "</p>" + "<p>TIOP operation team</p>";
-							//	sendMail(context, fileName, htmlBody);
+								// sendMail(context, fileName, htmlBody);
 								TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-								
 
 							}
 						}
@@ -289,11 +283,12 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 						String strDate = formatter.format(date);
 						final String htmlBody = "<h4>An issue [EXC011] encountered while processing the file "
-								+ fileName + " which was received on " + strDate + " to Open Search Dashboard repository.</h4>"
+								+ fileName + " which was received on " + strDate
+								+ " to Open Search Dashboard repository.</h4>"
 								+ "<h4>Details of the Issue:</h4>"
 								+ "<p>An error occurred in bulkload while updating Open Search Dashboard Repository. "
 								+ message + "</p>" + "<p>TIOP operation team</p>";
-						//sendMail(context, fileName, htmlBody);
+						// sendMail(context, fileName, htmlBody);
 						TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 						e.printStackTrace();
 					}
@@ -331,13 +326,13 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		}
 		ps.clearParameters();
 		int[] results = ps.executeBatch();
-		context.getLogger().log("Inserted hash data count = " + results.length);
+		// context.getLogger().log("Inserted hash data count = " + results.length);
 	}
 
 	private Set<String> getHashFromDB(Context context) {
-		Set<String> hashSet = new HashSet<String>();
+		Set<String> hashSet = new LinkedHashSet<String>();
 		String query = "SELECT hash FROM tiopdb.event_hash;";
-		int count = 0;
+
 		try {
 			con = getConnection();
 			Statement stmt = con.createStatement();
@@ -345,7 +340,6 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			while (rs.next()) {
 				if (rs.getString(1) != null)
 					hashSet.add(rs.getString(1));
-				count++;
 			}
 
 		} catch (Exception e) {
@@ -355,51 +349,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		return hashSet;
 	}
 
-	private void sendMail(Context context, String fileName, final String htmlBody) {
-		String smtpSecret = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.smtpSecretName));
-		String smtpHost = TIOPUtil.getKeyValue(smtpSecret, "smtpHost");
-		String username = TIOPUtil.getKeyValue(smtpSecret, "smtpUser");
-		String password = TIOPUtil.getKeyValue(smtpSecret, "smtpPassword");
-		String smtPort = TIOPUtil.getKeyValue(smtpSecret, "smtpPort");
-
-		String env = System.getenv(TIOPConstants.env);
-		final String subject = "[" + env.toUpperCase() + "] File Processing Issue: [" + fileName
-				+ "] - Attention Needed";
-		// Set up the SMTP server properties
-		Properties props = new Properties();
-		props.put("mail.smtp.auth", "true");
-		props.put("mail.smtp.starttls.enable", "true");
-		props.put("mail.smtp.host", smtpHost); // SMTP server address
-		props.put("mail.smtp.port", smtPort);
-		props.put("mail.smtp.ssl.trust", smtpHost);
-		props.put("mail.smtp.ssl.protocols", "TLSv1.2");
-		// Get the Session object
-		Session session = Session.getInstance(props, new javax.mail.Authenticator() {
-			protected PasswordAuthentication getPasswordAuthentication() {
-				return new PasswordAuthentication(username, password);
-			}
-		});
-
-		try {
-			// Create a default MimeMessage object
-			Message message = new MimeMessage(session);
-			// Set From: header field
-			message.setFrom(new InternetAddress(System.getenv(TIOPConstants.fromEmailId)));
-			// Set To: header field
-			message.setRecipients(Message.RecipientType.TO,
-					InternetAddress.parse(System.getenv(TIOPConstants.toEmailId)));
-			// Set Subject: header field
-			message.setSubject(subject);
-			// Set the actual message
-			message.setContent(htmlBody, "text/html");
-			// Send message
-			Transport.send(message);
-			// sendemail-send");
-		} catch (MessagingException e) {
-			e.printStackTrace();
-		}
-	}
-
+	
 	private static CloseableHttpClient createHttpClientWithDisabledSSL() throws Exception {
 		// Create a trust manager that does not validate certificate chains
 		SSLContext sslContext = SSLContextBuilder.create()
@@ -457,7 +407,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			context.getLogger().log("insertErrorLog ::: Start");
 			con = getConnection();
 			Statement stmt = con.createStatement();
-			context.getLogger().log("insertErrorLog ::: query = "+query);
+			context.getLogger().log("insertErrorLog ::: query = " + query);
 			stmt.executeUpdate(query);
 			context.getLogger().log("insertErrorLog ::: query inserted successfully");
 		} catch (Exception e) {
@@ -527,18 +477,53 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 			Date date = new Date();
 			SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
 			String strDate = formatter.format(date);
-			final String htmlBody = "<h4>An issue [EXC011] encountered while performing open search dashboard"
+			final String htmlBody = "<h4>An issue [EXC013] encountered while performing open search dashboard"
 					+ " repository for processing the file " + fileName + " which was received on "
 					+ strDate + ".t</h4>" + "<h4>Details of the Issue:</h4>"
 					+ "<p>An error occurred during open search dashboard updates. Though repository update is successful, "
-					+ "but there is a failure while moving the processed files to to a different bucket in S3. "
+					+ "but there is a failure while moving the processed files to to a different bucket in S3 - . "
 					+ message + "</p>" + "<p>TIOP operation team</p>";
-			context.getLogger()
-			.log("BulkLoadLambdaHandler Send mail trigger start ");
+			context.getLogger().log("BulkLoadLambdaHandler Send mail trigger start ");
 			TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 
 		}
 
 	}
 
+	private Set removeFailedRecordHash(String jsonString, Set insertHash) {
+
+		ObjectMapper objectMapper = new ObjectMapper();
+		JsonNode jsonObject = null;
+		try {
+			jsonObject = objectMapper.readTree(jsonString);
+
+			JsonNode itemsArray = jsonObject.get("items");
+
+			Set<String> removeHash = new HashSet<String>();
+			List<String> hashList = new ArrayList<>(insertHash);
+			if (itemsArray.isArray()) {
+
+				for (int i = 0; i < itemsArray.size(); i++) {
+
+					if (itemsArray.get(i).get("index").get("status").intValue() == 400) {
+						removeHash.add(hashList.get(i));
+					}
+
+				}
+			}
+			//removing the hash values which are failed to insert to open search.
+			for (String element : removeHash) {
+				context.getLogger().log("Failed hash values are "+ element);
+				insertHash.remove(element);
+			}
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return insertHash;
+
+	}
+
+	
 }
