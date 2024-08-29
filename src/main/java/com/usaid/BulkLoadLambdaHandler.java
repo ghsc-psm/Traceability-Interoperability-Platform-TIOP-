@@ -73,6 +73,10 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		sourceJsonBucketName = s3Event.getRecords().get(0).getS3().getBucket().getName();
 
 		fileName = s3Event.getRecords().get(0).getS3().getObject().getKey();
+		if(fileName.contains("+")) fileName = fileName.replace("+", " ");
+		if(fileName.contains("%28")) fileName = fileName.replaceAll("%28", "(");
+		if(fileName.contains("%29")) fileName = fileName.replaceAll("%29", ")");
+		
 		context.getLogger()
 				.log("BucketName :: " + sourceJsonBucketName + " ::  and fileName " + fileName);
 		S3Object s3Object = null;
@@ -524,6 +528,5 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 		return insertHash;
 
 	}
-
 	
 }
