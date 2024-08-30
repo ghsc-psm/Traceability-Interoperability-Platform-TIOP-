@@ -71,13 +71,14 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 			context.getLogger().log("RouterLambdaHandler::bucketName = " + bucketName);
 			
 			String secretName = "";
-			String getRouterInfo = getRouterInfo(context, destination);
-			context.getLogger().log("RouterLambdaHandler::getRouterInfo = " + getRouterInfo);
-			if(getRouterInfo != null && getRouterInfo.contains("#")) {
-				secretName = getRouterInfo.split("#")[2];
-			}
-			context.getLogger().log("RouterLambdaHandler::secretName = " + secretName);
 			try {
+					String getRouterInfo = getRouterInfo(context, destination);
+					context.getLogger().log("RouterLambdaHandler::getRouterInfo = " + getRouterInfo);
+					if(getRouterInfo != null && getRouterInfo.contains("#")) {
+						secretName = getRouterInfo.split("#")[2];
+					}
+					context.getLogger().log("RouterLambdaHandler::secretName = " + secretName);
+			
 		        String countryrouting = TIOPUtil.getSecretDetails(secretName);
 		        String apiURL = TIOPUtil.getKeyValue(countryrouting, "APIURL");
 		        String bearerToken = TIOPUtil.getKeyValue(countryrouting, "BearerToken");
@@ -184,7 +185,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		return con;
 	}
 	
-	private String getRouterInfo(Context context, String destination) {
+	private String getRouterInfo(Context context, String destination) throws Exception {
 		context.getLogger().log("rdsDbTeat ::: Start");
 		StringBuilder sb = new StringBuilder();
 		String query = "select tr.route_type,tr.security_type, tr.secret_name, tr.secret_key, tr.document_version from location dl\r\n"
@@ -213,6 +214,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 			
 		} catch (Exception e) {
 			context.getLogger().log("getRouterInfo ::: db error = " + e.getMessage());
+			throw e;
 		}
 		context.getLogger().log("getRouterInfo ::: DB ResultSet = "+sb.toString());
 		return sb.toString();

@@ -308,6 +308,7 @@ public class BulkLoadLambdaHandler implements RequestHandler<S3Event, String> {
 				s3Object.close();
 
 		} catch (Exception e) {
+			e.printStackTrace();
 			return "Error in BulkLoadLambdaHandler :::" + e.getMessage();
 		}
 		return "BulkLoadLambda success";
