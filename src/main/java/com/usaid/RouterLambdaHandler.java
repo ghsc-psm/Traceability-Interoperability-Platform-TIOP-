@@ -76,7 +76,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 			String secretName = "";
 			try {
 				String routerInfo = getRouterInfo(context, destination);
-				System.out.println("RouterLambdaHandler::getRouterInfo = " + routerInfo);
+				context.getLogger().log("RouterLambdaHandler::getRouterInfo = " + routerInfo);
 				if (routerInfo == null || routerInfo.isBlank()) {
 					throw new RouterConfigException("EXC010",
 							"An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["+destination+"].");

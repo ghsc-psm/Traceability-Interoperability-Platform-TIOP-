@@ -39,6 +39,8 @@ import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.core.JsonParser.Feature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.usaid.exceptions.JsonResponseParseException;
+import com.usaid.exceptions.RouterConfigException;
 
 public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 
@@ -123,6 +125,8 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				// Write the request body
 
 				context.getLogger().log("-----------------------------------TransfromLambdaHandler::3 -- "+urlString);
+				
+				context.getLogger().log("-----------------------------------Size of input data in bytes::"+jsonInputString.getBytes("UTF-8").length);
 				wr = new DataOutputStream(connection.getOutputStream());
 				wr.writeBytes(jsonInputString);
 				wr.flush();
@@ -147,11 +151,24 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 				in.close();
 				String transformedJson = response.toString();
 				
+				context.getLogger().log("-----------------------------------Size of output data in bytes::"+transformedJson.getBytes("UTF-8").length);
+				
+				context.getLogger().log("-----------------------------------Transformed Json file content ::"+transformedJson);
+				
 				ObjectMapper mapper = new ObjectMapper();
 				mapper.configure(Feature.AUTO_CLOSE_SOURCE, true);
 
 		        // read the json strings and convert it into JsonNode
-		        JsonNode node = mapper.readTree(transformedJson);
+				JsonNode node = null;
+				try {
+					node = mapper.readTree(transformedJson);
+				}catch(Exception ex) {
+					context.getLogger().log("TransfromLambdaHandler::ERROR:: XML to JSON transformation response parsing failed.");
+					
+					throw new JsonResponseParseException("EXC007",
+							"Event counts mismatch between original XML 1.2 version document and converted JSON 2.0 document.");
+					
+				}
 		        context.getLogger().log("-----------------------------------TransfromLambdaHandler::8");
 
 		        // display the JsonNode
@@ -182,20 +199,9 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 					if (jsonObjEventCount == objEventCount && jsonAggEventCount == aggEventCount) {
 						context.getLogger().log("TransfromLambdaHandler::XML and JSON Event conts are same");
 					} else {
-						context.getLogger().log("TransfromLambdaHandler::ERROR::XML and JSON Event conts are different. Log the error.");
-						Date date = new Date();
-						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
-						String strDate = formatter.format(date);
-						String detailMsg = "Event counts mismatch between original XML 1.2 version document and converted JSON 2.0 document.";
-						final String htmlBody = "<h4>An issue [EXC007] encountered while processing the file "
-								+ fileName + " which was received on " + strDate + ".</h4>"
-								+ "<h4>Details of the Issue:</h4>" + "<p>" + detailMsg + "</p>"
-								+ "<p>TIOP operation team</p>";
-						insertTransformationErrorLog(context, detailMsg, fileName, objEventCount, aggEventCount,
-								gtinInfo, source, destination);
-						TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-						//sendMail(fileName, htmlBody);
-						return "XML and JSON Event conts are different.";
+						context.getLogger().log("TransfromLambdaHandler::ERROR:: Transformation is successful, but XML and JSON Event conts are different. Log the error.");
+						throw new JsonResponseParseException("EXC007",
+								"Event counts mismatch between original XML 1.2 version document and converted JSON 2.0 document.");
 					}
 
 					fileName = fileName.replaceFirst(".xml", ".json");
@@ -253,6 +259,20 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 			// Disconnect the connection
 			connection.disconnect();
 
+		} catch(JsonResponseParseException jpe) {
+			Date date = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+			String strDate = formatter.format(date);
+			String detailMsg = "Event counts mismatch between original XML 1.2 version document and converted JSON 2.0 document.";
+			final String htmlBody = "<h4>An issue [EXC007] encountered while processing the file "
+					+ fileName + " which was received on " + strDate + ".</h4>"
+					+ "<h4>Details of the Issue:</h4>" + "<p>" + detailMsg + "</p>"
+					+ "<p>TIOP operation team</p>";
+			insertTransformationErrorLog(context, detailMsg, fileName, objEventCount, aggEventCount,
+					gtinInfo, source, destination);
+			TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+			return "XML to JSON Transformation Failed";
+			
 		} catch (Exception e) {
 			context.getLogger().log("TransfromLambdaHandler Error ::: -- " + e.getMessage());
 			e.printStackTrace();
@@ -265,7 +285,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 						+ e.getMessage() + "</p>" + "<p>TIOP operation team</p>";
 				insertTransformationErrorLog(context, e.getMessage(), fileName, objEventCount, aggEventCount, gtinInfo,	source, destination);
 				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-				//sendMail(fileName, htmlBody);
+				return "XML to JSON Transformation Failed";
 			}
 
 		} finally {
