@@ -11,7 +11,7 @@ public interface TIOPConstants {
 	String fromEmailId = "fromEmailId";
 	
 	String env = "env";
-	String dbdriver = "com.mysql.jdbc.Driver";
+	String dbdriver = "com.mysql.cj.jdbc.Driver";
 	String EPCISBody = "EPCISBody";
 	String EventList = "EventList";
 	String ObjectEvent = "ObjectEvent";

@@ -87,7 +87,6 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 					secretName = routerInfo.split("#")[2];
 				}
 				context.getLogger().log("RouterLambdaHandler::secretName = " + secretName);
-
 				String countryrouting = TIOPUtil.getSecretDetails(secretName);
 				String apiURL = TIOPUtil.getKeyValue(countryrouting, "APIURL");
 				String bearerToken = TIOPUtil.getKeyValue(countryrouting, "BearerToken");
@@ -124,7 +123,14 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				request.setEntity(se);
 
 				CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+				long startTime = System.currentTimeMillis();
+				context.getLogger().log("HTTP request started at: " + startTime);
+				
 				try (CloseableHttpResponse response = httpClient.execute(request)) {
+					 long endTime = System.currentTimeMillis();
+					 
+					 context.getLogger().log("HTTP request completed at: " + endTime);
+					 context.getLogger().log("Time taken: " + (endTime - startTime) + " ms");
 					int status = response.getStatusLine().getStatusCode();
 					String body = new String(response.getEntity().getContent().readAllBytes());
 
@@ -193,6 +199,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 
 			} catch (Exception e) {
+				e.printStackTrace();
 				String message = e.getMessage();
 				insertRouterErrorLog(context, message, fileName, objEventCount, aggEventCount,
 						gtinInfo, source, destination);
@@ -205,7 +212,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 						+ "<p>An error occurred while routing the EPCIS document. " + message
 						+ "</p>" + "<p>TIOP operation team</p>";
 				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-				e.printStackTrace();
+				
 			}
 		}
 
