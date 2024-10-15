@@ -1,0 +1,149 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Metadata:
+  Generator: "former2"
+Description: "Parameterized CloudFormation template for EC2 Security Groups and RDS"
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "The ID of the VPC"
+    Default: "vpc-083e0353a0221132b"  # Example value
+
+  SecurityGroup1Id:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the first Security Group"
+    Default: "sg-07a9a9013fe8451ab"  # Example value
+
+  SecurityGroup2Id:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the second Security Group"
+    Default: "sg-097786988294999d5"  # Example value
+
+  RdsSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the RDS Security Group"
+    Default: "sg-0673fd2f18fb262d2"  # Example value
+
+  RdsDBInstanceClass:
+    Type: String
+    Default: "db.t3.large"
+    Description: "The database instance class"
+
+  RdsDBInstanceIdentifier:
+    Type: String
+    Default: "tiopdb"
+    Description: "The DB instance identifier"
+
+  DBUsername:
+    Type: String
+    Default: "admin"
+    Description: "Master username for the RDS DB instance"
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Description: "Master password for the RDS DB instance"
+
+  DBSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: "The first subnet for the DB subnet group"
+    Default: "subnet-07b6ad3c658ef1cd5"  # Example value
+
+  DBSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: "The second subnet for the DB subnet group"
+    Default: "subnet-056301ee776e4c799"  # Example value
+
+  KmsKeyId:
+    Type: String
+    Description: "The KMS key ID for encrypting the RDS instance"
+    Default: "arn:aws:kms:region:account-id:key/d718fb7b-040b-4fee-8012-84635e37323f"  # Example value
+
+Resources:
+  EC2SecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Superset Prod SG"
+      GroupName: "Superset Prod SG"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref SecurityGroup1Id
+          SourceSecurityGroupOwnerId: !Ref AWS::AccountId
+          Description: "Load Balancer Prod Security Group"
+          FromPort: 0
+          IpProtocol: "tcp"
+          ToPort: 65535
+      SecurityGroupEgress:
+        - DestinationSecurityGroupId: !Ref EC2SecurityGroup2
+          FromPort: !GetAtt RDSDBInstance.Endpoint.Port
+          IpProtocol: "tcp"
+          ToPort: !GetAtt RDSDBInstance.Endpoint.Port
+
+  EC2SecurityGroup2:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "TIOPProdDBSecurityGroup"
+      GroupName: "TIOPProdDBSecurityGroup"
+      Tags:
+        - Key: "Name"
+          Value: "DB Prod"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - SourceSecurityGroupId: !Ref SecurityGroup2Id
+          SourceSecurityGroupOwnerId: !Ref AWS::AccountId
+          Description: "Superset Prod SG"
+          FromPort: !GetAtt RDSDBInstance.Endpoint.Port
+          IpProtocol: "tcp"
+          ToPort: !GetAtt RDSDBInstance.Endpoint.Port
+        # Add more ingress rules for other Lambda security groups as needed
+      SecurityGroupEgress:
+        - CidrIp: "0.0.0.0/0"
+          IpProtocol: "-1"
+
+  RDSDBSubnetGroup:
+    Type: "AWS::RDS::DBSubnetGroup"
+    Properties:
+      DBSubnetGroupDescription: "Created from the RDS Management Console"
+      DBSubnetGroupName: "default-vpc"
+      SubnetIds:
+        - !Ref DBSubnet1
+        - !Ref DBSubnet2
+
+  RDSDBInstance:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBInstanceIdentifier: !Ref RdsDBInstanceIdentifier
+      AllocatedStorage: 100
+      DBInstanceClass: !Ref RdsDBInstanceClass
+      Engine: "mysql"
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      PreferredBackupWindow: "08:22-08:52"
+      BackupRetentionPeriod: 7
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      PreferredMaintenanceWindow: "sat:06:49-sat:07:19"
+      MultiAZ: false
+      EngineVersion: "8.0.35"
+      AutoMinorVersionUpgrade: true
+      LicenseModel: "general-public-license"
+      Iops: 1000
+      PubliclyAccessible: true
+      StorageType: "io2"
+      Port: 3306
+      StorageEncrypted: true
+      KmsKeyId: !Ref KmsKeyId
+      CopyTagsToSnapshot: true
+      MonitoringInterval: 60
+      EnableIAMDatabaseAuthentication: false
+      EnablePerformanceInsights: true
+      PerformanceInsightsKMSKeyId: !Ref KmsKeyId
+      PerformanceInsightsRetentionPeriod: 7
+      DeletionProtection: true
+      DBSubnetGroupName: !Ref RDSDBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroupId
+      MaxAllocatedStorage: 1000
+      DBParameterGroupName: "default.mysql8.0"
+      OptionGroupName: "default:mysql-8-0"
+      MonitoringRoleArn: !Sub "arn:aws:iam::${AWS::AccountId}:role/rds-monitoring-role"
+      CACertificateIdentifier: "rds-ca-rsa2048-g1"

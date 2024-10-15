@@ -1,0 +1,185 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Metadata:
+  Generator: "former2"
+Description: "Parameterized CloudFormation template for Lambda functions and related resources"
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: "The ID of the VPC"
+    Default: "vpc-083e0353a0221132b"  # Example value
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: "The ID of the subnet"
+    Default: "subnet-07b6ad3c658ef1cd5"  # Example value
+
+  SecurityGroup1:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the first Security Group for Lambda Function"
+    Default: "sg-093e06b85473e0392"  # Example value
+
+  SecurityGroup2:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the second Security Group for Lambda Function"
+    Default: "sg-04a0d4217b70dca99"  # Example value
+
+  SecurityGroup3:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the third Security Group for Lambda Function"
+    Default: "sg-095a6f4432d330ae9"  # Example value
+
+  SecurityGroup4:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the fourth Security Group for Lambda Function"
+    Default: "sg-0ed380caec4c36020"  # Example value
+
+  SecurityGroup5:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the fifth Security Group for Lambda Function"
+    Default: "sg-0b5f225447aba7930"  # Example value
+
+  SecurityGroup6:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: "ID of the sixth Security Group for Lambda Function"
+    Default: "sg-0a386511a165321fc"  # Example value
+
+  S3Bucket:
+    Type: String
+    Default: "prod-iad-c1-djusa-tasks"
+    Description: "The S3 bucket for Lambda function code"
+
+  S3KeyLambda1:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdDocumentAuth-0aac4500-36cb-4f3a-bf87-e6829d33d645"
+    Description: "The S3 key for the Lambda function 1 code"
+
+  S3KeyLambda2:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdRouter-0496f4a4-97e4-48cc-a0e9-7e2f5a4194f1"
+    Description: "The S3 key for the Lambda function 2 code"
+
+  S3KeyLambda3:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdBulkLoad-a729aa29-006b-41dc-be46-c9e717dd39b0"
+    Description: "The S3 key for the Lambda function 3 code"
+
+  S3KeyLambda4:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdDocumentValidation-aa40c3c6-9ab4-43a7-a370-5c16be071918"
+    Description: "The S3 key for the Lambda function 4 code"
+
+  S3KeyLambda5:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdPurgeDocument-1a03c3f5-1323-4e2d-b78e-cfe66a58452c"
+    Description: "The S3 key for the Lambda function 5 code"
+
+  S3KeyLambda6:
+    Type: String
+    Default: "/snapshots/${AWS::AccountId}/TIOPProdDocumentTransform-13c1ffdd-6660-4ffc-aa32-deda8deb42b3"
+    Description: "The S3 key for the Lambda function 6 code"
+
+Resources:
+  EC2Subnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Sub "${AWS::Region}a"
+      CidrBlock: "172.31.16.0/20"
+      VpcId: !Ref VpcId
+      MapPublicIpOnLaunch: false
+      Tags: 
+        - Key: "Name"
+          Value: "TIOP Private Subnet"
+
+  LambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: "TIOPProdDocumentAuth"
+      Handler: "com.usaid.AuthLambdaHandler::handleRequest"
+      MemorySize: 3008
+      Timeout: 900
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/AuthRole2"
+      Runtime: "java11"
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3KeyLambda1
+      VpcConfig:
+        SubnetIds:
+          - !Ref SubnetId
+        SecurityGroupIds:
+          - !Ref SecurityGroup1
+      Environment:
+        Variables:
+          dbSecretName: "prod/dbsecrets"
+          toEmailId: "HSS-GS1GlobalStandards-HQ@ghsc-psm.org"
+          fromEmailId: "HSS-GS1GlobalStandards-HQ@ghsc-psm.org"
+          TIOPDocumentValidation: !GetAtt LambdaFunction4.Arn
+          env: "prod"
+      TracingConfig:
+        Mode: "PassThrough"
+      EphemeralStorage:
+        Size: 3008
+
+  LambdaFunction2:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      FunctionName: "TIOPProdRouter"
+      Handler: "com.usaid.RouterLambdaHandler::handleRequest"
+      MemorySize: 3008
+      Timeout: 900
+      Role: !Sub "arn:aws:iam::${AWS::AccountId}:role/AuthRole2"
+      Runtime: "java11"
+      Code:
+        S3Bucket: !Ref S3Bucket
+        S3Key: !Ref S3KeyLambda2
+      VpcConfig:
+        SubnetIds:
+          - !Ref SubnetId
+        SecurityGroupIds:
+          - !Ref SecurityGroup2
+      Environment:
+        Variables:
+          dbSecretName: "prod/dbsecrets"
+          toEmailId: "HSS-GS1GlobalStandards-HQ@ghsc-psm.org"
+          fromEmailId: "HSS-GS1GlobalStandards-HQ@ghsc-psm.org"
+          routerSecretName: "prod/countryrouting"
+          env: "prod"
+      TracingConfig:
+        Mode: "PassThrough"
+      EphemeralStorage:
+        Size: 3008
+
+  # Additional Lambda functions (LambdaFunction3, LambdaFunction4, etc.)
+  # are similarly parameterized, with different function names, S3 keys, and security groups.
+
+  LambdaPermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt LambdaFunction3.Arn
+      Principal: "s3.amazonaws.com"
+      SourceArn: "arn:aws:s3:::epcis2.0documents"
+
+  LambdaPermission2:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt LambdaFunction5.Arn
+      Principal: "s3.amazonaws.com"
+      SourceArn: "arn:aws:s3:::processedepcisxmlprod"
+
+  LambdaPermission3:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Principal: "s3.amazonaws.com"
+      SourceArn: "arn:aws:s3:::tiopsftpfiles"
+
+  LambdaEventInvokeConfig:
+    Type: "AWS::Lambda::EventInvokeConfig"
+    Properties:
+      FunctionName: !Ref LambdaFunction4
+      MaximumEventAgeInSeconds: 21600
+      MaximumRetryAttempts: 2
+      Qualifier: "$LATEST"

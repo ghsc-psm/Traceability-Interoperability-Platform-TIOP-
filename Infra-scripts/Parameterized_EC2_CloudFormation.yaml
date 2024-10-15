@@ -1,0 +1,163 @@
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Parameterized CloudFormation Template for EC2 Instances and Related Resources
+
+Parameters:
+  InstanceType:
+    Description: EC2 instance type (e.g., t3.large, t2.micro)
+    Type: String
+    Default: t3.large
+
+  KeyName:
+    Description: The name of the EC2 Key Pair to allow SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+
+  SubnetId:
+    Description: The ID of the subnet to launch the EC2 instances
+    Type: AWS::EC2::Subnet::Id
+
+  SecurityGroupIds:
+    Description: The security group IDs for the EC2 instances
+    Type: List<AWS::EC2::SecurityGroup::Id>
+
+  VolumeSize:
+    Description: The size of the EBS volume in GiB
+    Type: Number
+    Default: 30
+
+  VolumeType:
+    Description: The type of EBS volume (gp2, gp3, io1, etc.)
+    Type: String
+    Default: gp3
+
+  VpcId:
+    Description: The ID of the VPC
+    Type: AWS::EC2::VPC::Id
+
+Resources:
+  EC2VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "172.31.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: "default"
+      Tags:
+        - Key: "Name"
+          Value: "TIOP VPC"
+
+  IAMInstanceProfile:
+    Type: "AWS::IAM::InstanceProfile"
+    Properties:
+      Path: "/"
+      InstanceProfileName: "DashboardS3AccessRoleProd"
+      Roles:
+        - "DashboardS3AccessRoleProd"
+
+  # EC2 Instances
+  EC2Instance1:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-04b70fa74e45c3917"
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: !Ref SecurityGroupIds
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            Encrypted: true
+            VolumeSize: !Ref VolumeSize
+            VolumeType: !Ref VolumeType
+            DeleteOnTermination: true
+      Tags:
+        - Key: "Name"
+          Value: "Apache Superset Prod"
+
+  EC2Instance2:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-099136ff630ce0429"
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: !Ref SecurityGroupIds
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            Encrypted: false
+            VolumeSize: 8
+            VolumeType: gp2
+            DeleteOnTermination: true
+      Tags:
+        - Key: "Name"
+          Value: "Document Conversion Prod"
+
+  EC2Instance3:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      ImageId: "ami-04a81a99f5ec58529"
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: !Ref SecurityGroupIds
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            Encrypted: false
+            VolumeSize: 100
+            VolumeType: !Ref VolumeType
+            DeleteOnTermination: true
+      Tags:
+        - Key: "Name"
+          Value: "Opensearch Prod"
+
+  # Security Groups
+  EC2SecurityGroup1:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "Opensearch Prod SG"
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - CidrIp: "106.222.202.87/32"
+          FromPort: 22
+          IpProtocol: "tcp"
+          ToPort: 22
+        - SourceSecurityGroupId: !Ref EC2SecurityGroup2
+          FromPort: 5601
+          IpProtocol: "tcp"
+          ToPort: 5601
+      Tags:
+        - Key: "Name"
+          Value: "OpensearchProdSG"
+
+  # Example for Subnet
+  EC2Subnet:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VpcId
+      CidrBlock: "172.31.80.0/20"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: "Name"
+          Value: "TIOP Subnet"
+
+  # EBS Volume Attachment
+  EC2VolumeAttachment1:
+    Type: "AWS::EC2::VolumeAttachment"
+    Properties:
+      VolumeId: !Ref EC2Volume1
+      InstanceId: !Ref EC2Instance1
+      Device: "/dev/sda1"
+
+  EC2VolumeAttachment2:
+    Type: "AWS::EC2::VolumeAttachment"
+    Properties:
+      VolumeId: !Ref EC2Volume2
+      InstanceId: !Ref EC2Instance2
+      Device: "/dev/sda1"
+
+Outputs:
+  VPCId:
+    Value: !Ref EC2VPC
+    Description: "VPC ID"

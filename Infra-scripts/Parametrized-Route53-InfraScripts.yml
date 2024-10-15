@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Metadata:
+  Generator: "former2"
+Description: "Parameterized CloudFormation template for Route 53 Hosted Zone and Record Sets"
+Parameters:
+  DomainName:
+    Type: String
+    Default: "opentiop.org"
+    Description: "The main domain name (e.g., opentiop.org)"
+
+  HostedZoneId:
+    Type: String
+    Default: "Z01893801FES3N21DXICG"
+    Description: "The Route 53 hosted zone ID (e.g., Z01893801FES3N21DXICG)"
+
+  AnalyticsDomainName:
+    Type: String
+    Default: "analytics"
+    Description: "The domain name for analytics subdomain"
+
+  EPCISDashboardDomainName:
+    Type: String
+    Default: "epcis-dashboard"
+    Description: "The domain name for EPCIS dashboard subdomain"
+
+  EPCISDashboardTestDomainName:
+    Type: String
+    Default: "epcis-dashboardtest"
+    Description: "The domain name for EPCIS dashboard test subdomain"
+
+  SFTPDomainName:
+    Type: String
+    Default: "sftp"
+    Description: "The domain name for SFTP subdomain"
+
+  TiopDBDomainName:
+    Type: String
+    Default: "tiopdb"
+    Description: "The domain name for TiopDB subdomain"
+
+  TTL:
+    Type: String
+    Default: "300"
+    Description: "TTL for the DNS records"
+
+Resources:
+  Route53HostedZone:
+    Type: "AWS::Route53::HostedZone"
+    Properties:
+      Name: !Ref DomainName
+
+  Route53RecordSet:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Ref DomainName
+      Type: "NS"
+      TTL: 172800
+      ResourceRecords: 
+        - "ns-568.awsdns-07.net."
+        - "ns-172.awsdns-21.com."
+        - "ns-1952.awsdns-52.co.uk."
+        - "ns-1257.awsdns-29.org."
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet2:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${DomainName}."
+      Type: "SOA"
+      TTL: 900
+      ResourceRecords: 
+        - "ns-568.awsdns-07.net. awsdns-hostmaster.amazon.com. 1 7200 900 1209600 86400"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet3:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "_5a4dc005eb7ff7def449927762f6fedc.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - "_c5e3a77dd69ad308fb0092a4d8c924a7.sdgjtdhdhz.acm-validations.aws."
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet4:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "ro7uld4dgyoveu6oopgynosqubrorgiv._domainkey.${DomainName}"
+      Type: "CNAME"
+      TTL: 1800
+      ResourceRecords: 
+        - "ro7uld4dgyoveu6oopgynosqubrorgiv.dkim.amazonses.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet5:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "ru4idmaj43kjsykucxsjcvyvg6ozllot._domainkey.${DomainName}"
+      Type: "CNAME"
+      TTL: 1800
+      ResourceRecords: 
+        - "ru4idmaj43kjsykucxsjcvyvg6ozllot.dkim.amazonses.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet6:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "tfdkxdmzblbqe6kq2dslov3hq6nzhk4u._domainkey.${DomainName}"
+      Type: "CNAME"
+      TTL: 1800
+      ResourceRecords: 
+        - "tfdkxdmzblbqe6kq2dslov3hq6nzhk4u.dkim.amazonses.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet7:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${AnalyticsDomainName}.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - !Sub "supersetprodlb-1370015913.${AWS::Region}.elb.amazonaws.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet8:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "_72b390ba974d33ec30e8f57a8b958ec9.analyticstest.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - "_674a70e26aabadd05994d6ce96519b03.sdgjtdhdhz.acm-validations.aws."
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet9:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${EPCISDashboardDomainName}.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - !Sub "opeansearchprodlb-471375349.${AWS::Region}.elb.amazonaws.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet10:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${EPCISDashboardTestDomainName}.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - !Sub "opensearchtestlb-2013746214.${AWS::Region}.elb.amazonaws.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet11:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${SFTPDomainName}.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - !Sub "s-0cb1e40b317d4e04b.server.transfer.${AWS::Region}.amazonaws.com"
+      HostedZoneId: !Ref HostedZoneId
+
+  Route53RecordSet12:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Name: !Sub "${TiopDBDomainName}.${DomainName}"
+      Type: "CNAME"
+      TTL: !Ref TTL
+      ResourceRecords: 
+        - !Sub "tiopdb.cx8a24s68i3t.${AWS::Region}.rds.amazonaws.com"
+      HostedZoneId: !Ref HostedZoneId

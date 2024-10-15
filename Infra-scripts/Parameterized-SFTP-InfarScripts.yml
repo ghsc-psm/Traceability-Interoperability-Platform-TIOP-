@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Parameterized Transfer Server CloudFormation Template"
+Parameters:
+  EndpointType:
+    Type: String
+    Default: "VPC"
+    Description: "The type of the endpoint for the Transfer server."
+
+  IdentityProviderType:
+    Type: String
+    Default: "SERVICE_MANAGED"
+    Description: "The identity provider type for the Transfer server."
+
+  AddressAllocationId:
+    Type: String
+    Default: "eipalloc-0c1d157604d290479"
+    Description: "The Elastic IP allocation ID to associate with the VPC endpoint."
+
+  SubnetId:
+    Type: String
+    Default: "subnet-0078ce20a25fd7844"
+    Description: "The subnet ID where the VPC endpoint will be placed."
+
+  VpcEndpointId:
+    Type: String
+    Default: "vpce-09a4b38d65402cf68"
+    Description: "The VPC endpoint ID."
+
+  VpcId:
+    Type: String
+    Default: "vpc-083e0353a0221132b"
+    Description: "The VPC ID where the Transfer server will be created."
+
+  HostedZoneId:
+    Type: String
+    Default: "/hostedzone/Z01893801FES3N21DXICG"
+    Description: "The Route 53 hosted zone ID."
+
+  CustomHostname:
+    Type: String
+    Default: "sftp.opentiop.org"
+    Description: "The custom hostname for the Transfer server."
+
+  ServerName:
+    Type: String
+    Default: "SFTP Prod"
+    Description: "The name of the Transfer server."
+
+  Protocols:
+    Type: CommaDelimitedList
+    Default: "SFTP"
+    Description: "The protocols to enable for the Transfer server."
+
+  SecurityPolicyName:
+    Type: String
+    Default: "TransferSecurityPolicy-2024-01"
+    Description: "The security policy name for the Transfer server."
+
+Resources:
+  TransferServer:
+    Type: "AWS::Transfer::Server"
+    Properties:
+      EndpointType: !Ref EndpointType
+      IdentityProviderType: !Ref IdentityProviderType
+      EndpointDetails:
+        AddressAllocationIds:
+          - !Ref AddressAllocationId
+        SubnetIds:
+          - !Ref SubnetId
+        VpcEndpointId: !Ref VpcEndpointId
+        VpcId: !Ref VpcId
+      Tags:
+        - Key: "transfer:route53HostedZoneId"
+          Value: !Ref HostedZoneId
+        - Key: "transfer:customHostname"
+          Value: !Ref CustomHostname
+        - Key: "Name"
+          Value: !Ref ServerName
+      Protocols: !Ref Protocols
+      SecurityPolicyName: !Ref SecurityPolicyName

@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Parameterized CloudFormation Template"
+Parameters:
+  BucketName1:
+    Type: String
+    Default: "dashboard-repo-snapshot-prod"
+    Description: "The name of the first S3 bucket."
+  
+  BucketName2:
+    Type: String
+    Default: "epcis2.0documents"
+    Description: "The name of the second S3 bucket."
+
+  BucketName3:
+    Type: String
+    Default: "processedepcisjsonprod"
+    Description: "The name of the third S3 bucket."
+
+  BucketName4:
+    Type: String
+    Default: "processedepcisxmlprod"
+    Description: "The name of the fourth S3 bucket."
+
+  BucketName5:
+    Type: String
+    Default: "supersetalblogs"
+    Description: "The name of the fifth S3 bucket."
+
+  BucketName6:
+    Type: String
+    Default: "tiopsftpfiles"
+    Description: "The name of the sixth S3 bucket."
+
+  LambdaFunctionArn1:
+    Type: String
+    Description: "ARN of the Lambda function for bulk load events."
+
+  LambdaFunctionArn2:
+    Type: String
+    Description: "ARN of the Lambda function for document authentication."
+
+  LambdaFunctionArn3:
+    Type: String
+    Description: "ARN of the Lambda function for document purging."
+
+Resources:
+  S3Bucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName1
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3Bucket2:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName2
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:Put"
+            Function: !Ref LambdaFunctionArn1
+          - Event: "s3:ObjectCreated:Post"
+            Function: !Ref LambdaFunctionArn1
+          - Event: "s3:ObjectCreated:Copy"
+            Function: !Ref LambdaFunctionArn1
+          - Event: "s3:ObjectCreated:CompleteMultipartUpload"
+            Function: !Ref LambdaFunctionArn1
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3Bucket3:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName3
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3Bucket4:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName4
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: "AutomaticPurge"
+            Status: "Enabled"
+            ExpirationInDays: 365
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectRemoved:*"
+            Function: !Ref LambdaFunctionArn3
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3Bucket5:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName5
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+
+  S3Bucket6:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketName: !Ref BucketName6
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: "AES256"
+            BucketKeyEnabled: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: "s3:ObjectCreated:Put"
+            Function: !Ref LambdaFunctionArn2
+          - Event: "s3:ObjectCreated:Post"
+            Function: !Ref LambdaFunctionArn2
+          - Event: "s3:ObjectCreated:Copy"
+            Function: !Ref LambdaFunctionArn2
+          - Event: "s3:ObjectCreated:CompleteMultipartUpload"
+            Function: !Ref LambdaFunctionArn2
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: "BucketOwnerEnforced"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  S3BucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref S3Bucket5
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              AWS: "arn:aws:iam::127311923021:root"
+            Action: "s3:PutObject"
+            Resource: !Sub "arn:aws:s3:::${BucketName5}/*"
+
+  # Example of a parameterized KMS Key
+  KMSKey:
+    Type: "AWS::KMS::Key"
+    Properties:
+      Enabled: true
+      Description: "KMS Key for encryption"
+      KeyUsage: "ENCRYPT_DECRYPT"
+      KeyPolicy: !Sub |
+        {
+          "Version" : "2012-10-17",
+          "Id" : "key-consolepolicy-3",
+          "Statement" : [ {
+            "Sid" : "AllowAdminsToManageKeyPolicy",
+            "Effect" : "Allow",
+            "Principal" : {
+              "AWS" : "arn:aws:iam::${AWS::AccountId}:root"
+            },
+            "Action" : "kms:*",
+            "Resource" : "*"
+          }]
+        }
+      KeySpec: "SYMMETRIC_DEFAULT"
+      MultiRegion: false
