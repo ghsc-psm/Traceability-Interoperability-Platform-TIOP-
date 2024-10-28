@@ -9,6 +9,12 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -22,7 +28,10 @@ import org.w3c.dom.NodeList;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambda;
+import com.amazonaws.services.lambda.AWSLambdaAsync;
 import com.amazonaws.services.lambda.AWSLambdaAsyncClient;
+import com.amazonaws.services.lambda.AWSLambdaAsyncClientBuilder;
+import com.amazonaws.services.lambda.AWSLambdaClient;
 import com.amazonaws.services.lambda.model.InvokeRequest;
 import com.amazonaws.services.lambda.model.InvokeResult;
 import com.amazonaws.services.lambda.runtime.Context;
@@ -106,9 +115,10 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 			}	
 			//Router lamda -- arn:aws:lambda:us-east-1:654654535046:function:TIOPRouter
 			invokeRouterfromLamda(context, fileName, bucketName, source, destination, gtinInfo, objEventCount, aggEventCount);
-			//Transfrom lamda call
-			invokeTransfromLamda(context, fileName, bucketName, source, destination, gtinInfo, objEventCount, aggEventCount);
 
+			//Transfrom lamda call
+			invokeTransformLamda(context, fileName, bucketName, source, destination, gtinInfo, objEventCount, aggEventCount);
+			
 			context.getLogger().log("Validated successfully for file '" + fileName + "' from s3 bucket '" + bucketName + "'");
 			
 		} catch (TIOPException e) {
@@ -137,7 +147,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 	
 	private void invokeRouterfromLamda(Context context, String fileName, String bucketName, String source,
 			String destination, String gtinInfo, int objEventCount, int aggEventCount) {
-		context.getLogger().log("Calling TIOPRouter lamda");
+		context.getLogger().log("Calling TIOPRouter lambda");
 
 		JSONObject payloadObject = new JSONObject();
 		payloadObject.put("bucketName", bucketName);
@@ -148,19 +158,39 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		payloadObject.put("objEventCount", String.valueOf(objEventCount));
 		payloadObject.put("aggEventCount", String.valueOf(aggEventCount));
 
-		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
+		AWSLambdaAsync  client =AWSLambdaAsyncClientBuilder.standard()
+	            .withRegion(Regions.US_EAST_1)
+	            .build();
 		String TIOPRouter = System.getenv("TIOPRouter");
 		InvokeRequest request = new InvokeRequest();
 		request.withFunctionName(TIOPRouter)
 				.withPayload(payloadObject.toString());
 		context.getLogger().log("Calling TIOPRouter with payload = " +payloadObject.toString());
-		InvokeResult invoke = client.invoke(request);
-		context.getLogger().log("Result invoking TIOPRouter  == " + invoke);
+		Future<InvokeResult> futureResult = client.invokeAsync(request);
+		
+		context.getLogger().log("Result invoking TIOPRouter  == " + futureResult);
+		
+		// Use ExecutorService to check the result without blocking
+	        ExecutorService executor = Executors.newSingleThreadExecutor();
+	        executor.submit(() -> {
+	            try {
+	                InvokeResult result = futureResult.get();  // This will block, but in a separate thread
+	                context.getLogger().log("Routing Lambda invoked successfully. Response: " + result.getStatusCode());
+	            } catch (Exception e) {
+	                // Handle exception
+	            	context.getLogger().log("Error invoking Routing Lambda: " + e.getMessage());
+	            }
+	        });
+		        
+		   // Shutdown the executor service
+		   executor.shutdown();
+		  
+		context.getLogger().log("Leaving invokeRouterfromLamda method.");
 	}
 	
 	
 
-	private void invokeTransfromLamda(Context context, String fileName, String bucketName, String source, String destination, String gtinInfo, int objEventCount, int aggEventCount) {
+	private void invokeTransformLamda(Context context, String fileName, String bucketName, String source, String destination, String gtinInfo, int objEventCount, int aggEventCount) {
 		//context.getLogger().log("Calling validate lamda");
 		
 		JSONObject payloadObject = new JSONObject();
@@ -178,13 +208,16 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		String smtpSecretName = TIOPUtil.getSecretDetails(System.getenv(TIOPConstants.smtpSecretName));
 		payloadObject.put("smtpSecretName", smtpSecretName);
 		
-		AWSLambda client = AWSLambdaAsyncClient.builder().withRegion(Regions.US_EAST_1).build();
+		
+		AWSLambda client = AWSLambdaClient.builder().withRegion(Regions.US_EAST_1).build();
 		String TIOPDocumentTransform = System.getenv("TIOPDocumentTransform");
 		InvokeRequest request = new InvokeRequest();
 		request.withFunctionName(TIOPDocumentTransform).withPayload(payloadObject.toString());
-		//context.getLogger().log("Calling TransfromLambdaHandler with payload = "+payloadObject.toString());
+		context.getLogger().log("Calling Transformation Lambda..with Lambd fn name "+TIOPDocumentTransform +" Payload: "+payloadObject.toString());
 		InvokeResult invoke = client.invoke(request);
 		context.getLogger().log("Result invoking TIOPDocumentValidation  == " + invoke);
+		
+	   context.getLogger().log("Leaving invokeTransformLamda method. ");
 	}
 	
 	private Connection getConnection() throws ClassNotFoundException, SQLException {
@@ -453,5 +486,7 @@ public class ValidateLambdaHandler implements RequestHandler<Object, String> {
 		//context.getLogger().log("Current "+ nodeName+" == " + node);
 		return node;
 	}
+	
+	
 
 }

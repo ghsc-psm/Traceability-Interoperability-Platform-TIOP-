@@ -13,9 +13,8 @@ import com.amazonaws.services.simpleemail.model.Destination;
 import com.amazonaws.services.simpleemail.model.Message;
 import com.amazonaws.services.simpleemail.model.SendEmailRequest;
 
-public class TIOPAuthSendEmail {
-
-
+public class TIOPPurgeSendEmail {
+	
 	public static void sendMail(Context context, String fileName, String htmlBody) {
 		String to = System.getenv(TIOPConstants.toEmailId); //"HSS-GS1GlobalStandards-HQ@ghsc-psm.org";
 		List<String> toAddress = new ArrayList<String>();
@@ -27,18 +26,12 @@ public class TIOPAuthSendEmail {
 		} else if(to !=null) {
 			toAddress.add(to);
 		}
-		context.getLogger()
-		.log("mail ids to send is " + toAddress.toString());
 		
 		String env = System.getenv(TIOPConstants.env);
-		
-		context.getLogger().log("Env is "+env);
 		final String SUBJECT = "["+env.toUpperCase()+"] File Processing Issue: ["+fileName+"] - Attention Needed";
 		final String TEXTBODY = "This email was sent through Amazon SES using the AWS SDK for Java.";
 		final String FROM = System.getenv(TIOPConstants.fromEmailId);
 		try {
-			
-			context.getLogger().log("Going to call send mail method -internal ");
 			sendMail(context, htmlBody, toAddress, SUBJECT, TEXTBODY, FROM);
 		} catch (Exception ex) {
 			context.getLogger().log("The email was not sent. Error message: " + ex.getMessage());
@@ -48,8 +41,6 @@ public class TIOPAuthSendEmail {
 
 	private static void sendMail(Context context, String htmlBody, List<String> toAddress, final String SUBJECT,
 			final String TEXTBODY, final String FROM) {
-		
-		context.getLogger().log("Inside send mail method -internal ");
 		AmazonSimpleEmailService client = AmazonSimpleEmailServiceClientBuilder.standard()
 				.withRegion(Regions.US_EAST_1).build();
 		context.getLogger().log("The email send start - 1");
@@ -63,5 +54,6 @@ public class TIOPAuthSendEmail {
 		client.sendEmail(request);
 		context.getLogger().log("Email sent to -- " + toAddress);
 	}
+
 
 }
