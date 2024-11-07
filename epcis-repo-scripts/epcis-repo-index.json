@@ -1,0 +1,106 @@
+{
+    "settings": {
+        "index": {
+            "number_of_shards": 1,
+            "number_of_replicas": 1
+        }
+    },
+    "mappings": {
+        "properties": {
+            "type": {
+                "type": "keyword"
+            },
+            "eventTime": {
+                "type": "date",
+                "format": "strict_date_time"
+            },
+            "recordTime": {
+                "type": "date",
+                "format": "strict_date_time"
+            },
+            "eventTimeZoneOffset": {
+                "type": "keyword"
+            },
+            "parentID": {
+                "type": "keyword"
+            },
+			
+            "childEPCs": {
+                "type": "keyword"
+            },
+            "action": {
+                "type": "keyword"
+            },
+            "bizStep": {
+                "type": "keyword"
+            },
+            "readPoint": {
+				"properties": {
+                    "id": {
+                        "type": "keyword"
+                    }
+                }
+          
+            },
+            "bizLocation": {
+				"properties": {
+                    "id": {
+                        "type": "keyword"
+                    }
+                }
+            },
+			"bizTransactionList":{
+                "properties": {
+                    "type": {
+                        "type": "keyword"
+                    },
+                    "bizTransaction": {
+                        "type": "keyword"
+                    }
+                }
+            },
+			
+            "tiop:nts_gln": {
+                "type": "keyword"
+            },
+            "tiop:billto_gln": {
+                "type": "keyword"
+            },
+			"tiop:psa": {
+                "type": "keyword"
+            },
+            "epcList": {
+                "type": "keyword"
+            },
+            "destinationList": {
+                "properties": {
+                    "type": {
+                        "type": "keyword"
+                    },
+                    "destination": {
+                        "type": "keyword"
+                    }
+                }
+            },
+			"@context": {
+				"properties": {
+					"tiop": {
+						"type": "keyword"
+					}
+				}
+			},
+			
+			"ilmd": {
+                "properties": {
+                    "cbvmda:itemExpirationDate": {
+						"type": "date",
+						"format": "MMM d, yyyy"
+					},
+                    "cbvmda:lot": {
+                        "type": "keyword"
+                    }
+                }
+            }
+    }
+    }
+}

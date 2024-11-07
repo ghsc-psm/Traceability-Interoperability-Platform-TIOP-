@@ -19,7 +19,7 @@ import com.amazonaws.services.simpleemail.model.SendEmailRequest;
 
 public class TIOPValidationSendEmail {
 
-	static void sendMail(Context context, int type, Set<String> toEmailSet, String fileName, String message) {
+	static void sendMail(Context context, Set<String> toEmailSet, String fileName, String message) {
 		context.getLogger().log("TIOPValidationSendEmail::sendMail start -- to "+toEmailSet+" --- message = "+message);
 		String expId = "";
 		List<String> toAddress = new ArrayList<String>();

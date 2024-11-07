@@ -352,7 +352,7 @@ public class TransfromLambdaHandler implements RequestHandler<Object, String> {
 	private Connection getConnection(String secretDetails) throws ClassNotFoundException, SQLException {
 		if (con == null || con.isClosed()) {
 			DBInfo dbInfo = TIOPUtil.getDBInfo(secretDetails);
-			System.out.println("TIOPUtil::getConnection::dbInfo = "+dbInfo.toString());
+			
 			String username = dbInfo.getUsername();
 			String password = dbInfo.getPassword();
 			String host = dbInfo.getHost();
