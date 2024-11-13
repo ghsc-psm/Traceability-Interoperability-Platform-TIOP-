@@ -12,6 +12,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.LinkedHashMap;
 
+import org.apache.http.Header;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
@@ -79,8 +80,9 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				context.getLogger().log("RouterLambdaHandler::getRouterInfo = " + routerInfo);
 				if (routerInfo == null || routerInfo.isBlank()) {
 					throw new RouterConfigException("EXC010",
-							"An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["+destination+"].");
-					
+							"An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["
+									+ destination + "].");
+
 					// [6151100444677]."
 
 				} else if (routerInfo != null && routerInfo.contains("#")) {
@@ -125,12 +127,12 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				CloseableHttpClient httpClient = HttpClientBuilder.create().build();
 				long startTime = System.currentTimeMillis();
 				context.getLogger().log("HTTP request started at: " + startTime);
-				
+
 				try (CloseableHttpResponse response = httpClient.execute(request)) {
-					 long endTime = System.currentTimeMillis();
-					 
-					 context.getLogger().log("HTTP request completed at: " + endTime);
-					 context.getLogger().log("Time taken: " + (endTime - startTime) + " ms");
+					long endTime = System.currentTimeMillis();
+
+					context.getLogger().log("HTTP request completed at: " + endTime);
+					context.getLogger().log("Time taken: " + (endTime - startTime) + " ms");
 					int status = response.getStatusLine().getStatusCode();
 					String body = new String(response.getEntity().getContent().readAllBytes());
 
@@ -140,6 +142,44 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 					if (status == 200) {
 						insertRouterInfo(context, fileName, objEventCount, aggEventCount, gtinInfo,
 								source, destination);
+					} else if (status == 401) {
+
+						Header authHeader = response.getFirstHeader("WWW-Authenticate");
+						if (authHeader != null) {
+							String authHeaderValue = authHeader.getValue();
+							context.getLogger().log("WWW-Authenticate Header: " + authHeaderValue);
+
+							// Step 2: Parse the header to extract `error` and `error_description`
+							String error = null;
+							String errorDescription = null;
+
+							// Check if the header contains "error" and "error_description"
+							if (authHeaderValue.contains("error=")) {
+								error = authHeaderValue.split("error=")[1].split(",")[0]
+										.replace("\"", "").trim();
+							}
+							if (authHeaderValue.contains("error_description=")) {
+								errorDescription = authHeaderValue.split("error_description=")[1]
+										.replace("\"", "").trim();
+								errorDescription = errorDescription.replace("'", "''");
+							}
+
+							// Print or log the extracted values
+							context.getLogger().log("Error: " + error);
+							context.getLogger().log("Error Description: " + errorDescription);
+
+							insertRouterErrorLog(context, errorDescription, fileName, objEventCount,
+									aggEventCount, gtinInfo, source, destination);
+							Date date = new Date();
+							SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+							String strDate = formatter.format(date);
+							final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
+									+ fileName + " which was received on " + strDate + ".</h4>"
+									+ "<h4>Details of the Issue:</h4>" + "<p>An error occurred (HTTP "
+									+ status + ") while routing the EPCIS document. " + errorDescription
+									+ "</p>" + "<p>TIOP operation team</p>";
+							TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
+						}
 					} else {
 						ObjectMapper mapper = new ObjectMapper();
 						JsonNode bodyNode = mapper.readTree(body);
@@ -194,8 +234,8 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 				final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
 						+ fileName + " which was received on " + strDate + ".</h4>"
 						+ "<h4>Details of the Issue:</h4>"
-						+ "<p>An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["+destination+"].</p>"
-						+ "<p>TIOP operation team</p>";
+						+ "<p>An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["
+						+ destination + "].</p>" + "<p>TIOP operation team</p>";
 				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
 
 			} catch (Exception e) {
@@ -212,7 +252,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 						+ "<p>An error occurred while routing the EPCIS document. " + message
 						+ "</p>" + "<p>TIOP operation team</p>";
 				TIOPAuthSendEmail.sendMail(context, fileName, htmlBody);
-				
+
 			}
 		}
 
@@ -253,7 +293,7 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 
 		} catch (Exception e) {
 			context.getLogger().log("getRouterInfo ::: db error = " + e.getMessage());
-			
+
 			throw new Exception("Failed to fetch routing configuration from the database.");
 		}
 		context.getLogger().log("getRouterInfo ::: DB ResultSet = " + sb.toString());
@@ -365,6 +405,233 @@ public class RouterLambdaHandler implements RequestHandler<Object, String> {
 		} catch (Exception e) {
 			context.getLogger().log("insertErrorLog ::: db error = " + e.getMessage());
 		}
+	}
+
+	public String handleRequest() {
+		System.out.println("RouterLambdaHandler::handleRequest::Start");
+		String fileName = null;
+		String bucketName = null;
+		String source = null;
+		String destination = null;
+		String gtinInfo = null;
+		int objEventCount = 0;
+		int aggEventCount = 0;
+
+		S3Object s3object = null;
+		S3ObjectInputStream inputStream = null;
+
+		// if (event instanceof LinkedHashMap) {
+		// LinkedHashMap<String, String> mapEvent = (LinkedHashMap<String, String>)
+		// event;
+		fileName = "wirshad/EPCIS_v1_2__09_11_2024__06_31_07.xml";
+		bucketName = "tiopsftpfilesdevtest";
+
+		source = "urn:epc:id:sgln:8903726.02035.0";
+		destination = "6151100444677";
+		gtinInfo = "urn:epc:id:sgtin:8903726.026982";
+
+		String objCount = "3";
+		if (objCount != null)
+			objEventCount = Integer.parseInt(objCount);
+		String aggCount = "12";
+		if (aggCount != null)
+			aggEventCount = Integer.parseInt(aggCount);
+		System.out.println("RouterLambdaHandler::Total ObjectEvent count = " + objEventCount);
+		System.out.println("RouterLambdaHandler::Total AggregationEvent count = " + aggEventCount);
+		System.out.println("RouterLambdaHandler::source = " + source);
+		System.out.println("RouterLambdaHandler::destination = " + destination);
+		System.out.println("RouterLambdaHandler::gtinInfo = " + gtinInfo);
+		System.out.println("RouterLambdaHandler::fileName = " + fileName);
+		System.out.println("RouterLambdaHandler::bucketName = " + bucketName);
+
+		String secretName = "";
+		try {
+			String routerInfo = getRouterInfo(null, destination);
+			System.out.println("RouterLambdaHandler::getRouterInfo = " + routerInfo);
+			if (routerInfo == null || routerInfo.isBlank()) {
+				throw new RouterConfigException("EXC010",
+						"An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["
+								+ destination + "].");
+
+				// [6151100444677]."
+
+			} else if (routerInfo != null && routerInfo.contains("#")) {
+				secretName = routerInfo.split("#")[2];
+			}
+			System.out.println("RouterLambdaHandler::secretName = " + secretName);
+			String countryrouting = TIOPUtil.getSecretDetails(secretName);
+			String apiURL = TIOPUtil.getKeyValue(countryrouting, "APIURL");
+			String bearerToken = TIOPUtil.getKeyValue(countryrouting, "BearerToken");
+
+			System.out.println("RouterLambdaHandler::handleRequest::apiURL = " + apiURL);
+			// context.getLogger().log("RouterLambdaHandler::handleRequest::bearerToken =
+			// "+bearerToken);
+
+			AmazonS3 s3client = AmazonS3Client.builder().withRegion(Regions.US_EAST_1)
+					.withCredentials(new DefaultAWSCredentialsProviderChain()).build();
+			s3object = s3client.getObject(bucketName, fileName);
+			inputStream = s3object.getObjectContent();
+			StringBuilder textBuilder = new StringBuilder();
+
+			Reader reader = new BufferedReader(
+					new InputStreamReader(inputStream, StandardCharsets.UTF_8));
+			char[] buffer = new char[1024];
+			int numCharsRead;
+			while ((numCharsRead = reader.read(buffer)) != -1) {
+				textBuilder.append(buffer, 0, numCharsRead);
+			}
+			// context.getLogger().log("RouterLambdaHandler::handleRequest::INPUT XML =
+			// "+textBuilder.toString());
+
+			bearerToken = "Bearer " + bearerToken;
+
+			// context.getLogger().log("RouterLambdaHandler::handleRequest::1 -- bearerToken
+			// = "+bearerToken);
+
+			HttpPost request = new HttpPost(apiURL);
+			StringEntity se = new StringEntity(textBuilder.toString());
+			request.setHeader("Content-Type", "application/xml");
+			request.setHeader("Authorization", bearerToken);
+			request.setEntity(se);
+
+			CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+			long startTime = System.currentTimeMillis();
+			System.out.println("HTTP request started at: " + startTime);
+
+			try (CloseableHttpResponse response = httpClient.execute(request)) {
+				long endTime = System.currentTimeMillis();
+
+				System.out.println("HTTP request completed at: " + endTime);
+				System.out.println("Time taken: " + (endTime - startTime) + " ms");
+				int status = response.getStatusLine().getStatusCode();
+				String body = new String(response.getEntity().getContent().readAllBytes());
+
+				System.out.println("Response status---> " + status);
+				System.out.println("Response response ---> " + body);
+
+				if (status == 200) {
+					insertRouterInfo(null, fileName, objEventCount, aggEventCount, gtinInfo, source,
+							destination);
+				} else if (status == 401) {
+
+					Header authHeader = response.getFirstHeader("WWW-Authenticate");
+					if (authHeader != null) {
+						String authHeaderValue = authHeader.getValue();
+						System.out.println("WWW-Authenticate Header: " + authHeaderValue);
+
+						// Step 2: Parse the header to extract `error` and `error_description`
+						String error = null;
+						String errorDescription = null;
+
+						// Check if the header contains "error" and "error_description"
+						if (authHeaderValue.contains("error=")) {
+							error = authHeaderValue.split("error=")[1].split(",")[0]
+									.replace("\"", "").trim();
+						}
+						if (authHeaderValue.contains("error_description=")) {
+							errorDescription = authHeaderValue.split("error_description=")[1]
+									.replace("\"", "").trim();
+						}
+
+						// Print or log the extracted values
+						System.out.println("Error: " + error);
+						System.out.println("Error Description: " + errorDescription);
+
+						insertRouterErrorLog(null, errorDescription, fileName, objEventCount,
+								aggEventCount, gtinInfo, source, destination);
+						Date date = new Date();
+						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+						String strDate = formatter.format(date);
+						final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
+								+ fileName + " which was received on " + strDate + ".</h4>"
+								+ "<h4>Details of the Issue:</h4>" + "<p>An error occurred (HTTP "
+								+ status + ") while routing the EPCIS document. " + errorDescription
+								+ "</p>" + "<p>TIOP operation team</p>";
+						TIOPAuthSendEmail.sendMail(null, fileName, htmlBody);
+					}
+				} else {
+					ObjectMapper mapper = new ObjectMapper();
+					JsonNode bodyNode = mapper.readTree(body);
+					String message = null;
+					JsonNode messageNode = bodyNode.get("message");
+
+					if (messageNode == null) {
+						messageNode = bodyNode.get("errors");
+						if (messageNode != null) {
+							message = messageNode.toString();
+							message = message.split(":")[1];
+							message = message.replaceAll("}", "");
+						}
+					} else {
+						message = messageNode.toString();
+					}
+
+					System.out.println("raw message -- " + message);
+
+					if (message != null) {
+						message = message.replaceAll("[\\[\\]]", "");
+						message = message.replaceAll("\"", "");
+						System.out.println("final message -- " + message);
+						insertRouterErrorLog(null, message, fileName, objEventCount, aggEventCount,
+								gtinInfo, source, destination);
+						Date date = new Date();
+						SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+						String strDate = formatter.format(date);
+						final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
+								+ fileName + " which was received on " + strDate + ".</h4>"
+								+ "<h4>Details of the Issue:</h4>" + "<p>An error occurred (HTTP "
+								+ status + ") while routing the EPCIS document. " + message + "</p>"
+								+ "<p>TIOP operation team</p>";
+						TIOPAuthSendEmail.sendMail(null, fileName, htmlBody);
+					}
+
+				}
+
+			}
+
+		} catch (RouterConfigException rce) {
+
+			rce.printStackTrace();
+			String message = rce.getMessage();
+
+			insertRouterErrorLog(null, message, fileName, objEventCount, aggEventCount, gtinInfo,
+					source, destination);
+			Date date = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+			String strDate = formatter.format(date);
+			final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
+					+ fileName + " which was received on " + strDate + ".</h4>"
+					+ "<h4>Details of the Issue:</h4>"
+					+ "<p>An error occurred while routing the EPCIS document. Routing record does not exist for recipient GLN ["
+					+ destination + "].</p>" + "<p>TIOP operation team</p>";
+			TIOPAuthSendEmail.sendMail(null, fileName, htmlBody);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			String message = e.getMessage();
+			insertRouterErrorLog(null, message, fileName, objEventCount, aggEventCount, gtinInfo,
+					source, destination);
+			Date date = new Date();
+			SimpleDateFormat formatter = new SimpleDateFormat("MM/dd/yyyy");
+			String strDate = formatter.format(date);
+			final String htmlBody = "<h4>An issue [EXC010] encountered while processing the file "
+					+ fileName + " which was received on " + strDate + ".</h4>"
+					+ "<h4>Details of the Issue:</h4>"
+					+ "<p>An error occurred while routing the EPCIS document. " + message + "</p>"
+					+ "<p>TIOP operation team</p>";
+			TIOPAuthSendEmail.sendMail(null, fileName, htmlBody);
+
+			// }
+		}
+
+		return "Router success";
+	}
+
+	public static void main(String args[]) {
+
+		RouterLambdaHandler handler = new RouterLambdaHandler();
+		handler.handleRequest();
+
 	}
 
 }
